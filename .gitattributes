@@ -1,16 +1,2 @@
 # Auto detect text files and perform LF normalization
-__pycache__/
 * text=auto
-*.tif
-*.log
-*.pyc
-*.h5
-*.pth
-*.npz
-*.pth
-*.shp
-*.dbf
-*.prj
-*.shx
-*.zip
-*.png
