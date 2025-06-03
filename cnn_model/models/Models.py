@@ -1,5 +1,5 @@
-from models.Encoder import *
-from models.Decoder import *
+from Models.Encoder import *
+from Models.Decoder import *
 import torch.nn as nn
 import torch.nn.functional as F
 import torch

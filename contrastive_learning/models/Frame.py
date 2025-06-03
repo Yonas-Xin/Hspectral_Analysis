@@ -1,6 +1,8 @@
 import sys, os
 base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(base_path)
+import signal
+import shutil
 from pathlib import Path
 from datetime import datetime
 import torch.nn as nn
@@ -8,8 +10,9 @@ from tqdm import tqdm
 from multiprocessing import cpu_count
 from torch.utils.tensorboard import SummaryWriter
 import torch
-from models.loss import InfoNCELoss
-class Cl_Frame:
+from Models.loss import InfoNCELoss
+
+class Contrastive_learning_frame:
     def __init__(self, augment, model_name, min_lr=1e-7, epochs=300, warmup_epochs=30,device=None, if_full_cpu=True):
         self.augment = augment
         self.infonce = InfoNCELoss(temperature=0.07)
@@ -26,8 +29,10 @@ class Cl_Frame:
         # 配置输出模型的名称和日志名称
         current_time = datetime.now().strftime("%Y%m%d%H%M")  # 记录系统时间
         model_save_name = f'{model_name}_{current_time}'
-        self.parent_dir = Path(__file__).parent # 获取当前运行脚本的目录
-        model_dir = os.path.join(self.parent_dir, 'models')
+        self.parent_dir = os.path.join(base_path, '_results') # 创建一个父目录保存训练结果
+        if not os.path.exists(self.parent_dir):
+            os.makedirs(self.parent_dir)
+        model_dir = os.path.join(self.parent_dir, 'models_pth')
         log_dir = os.path.join(self.parent_dir, 'logs')
         if not os.path.exists(model_dir):
             os.makedirs(model_dir)
@@ -36,12 +41,36 @@ class Cl_Frame:
         self.model_path = os.path.join(model_dir, f'{model_save_name}.pth')
         self.log_path = os.path.join(log_dir, f'{model_save_name}.log')
         self.tensorboard_dir = os.path.join(self.parent_dir, f'tensorboard_logs\\logs_{model_save_name}')
+        self.log_writer = None
+        self.writer = None
 
         #配置训练信息
         self.if_full_cpu = if_full_cpu
         self.train_epoch_min_loss = 100
         self.start_epoch = 0
-        self.del_logs() # 删除多余logs
+
+        # 注册信号处理函数
+        signal.signal(signal.SIGINT, self.handle_interrupt)
+        signal.signal(signal.SIGTERM, self.handle_interrupt)
+
+    def handle_interrupt(self, signum, frame):
+        """处理中断信号的函数"""
+        print("\nInterrupt signal received. ")
+        if not os.path.exists(self.model_path):
+            print("Model was not saved. Attempting to clean up log files...")
+            self.clean_up()
+        exit(1)
+
+    def clean_up(self):
+        """清理日志文件和tensorboard目录"""
+        if os.path.exists(self.log_path):
+            self.log_writer.close()
+            os.remove(self.log_path)
+            print(f"Removed log file: {self.log_path}")
+        if os.path.exists(self.tensorboard_dir):
+            self.writer.close()
+            shutil.rmtree(self.tensorboard_dir)
+            print(f"Removed tensorboard directory: {self.tensorboard_dir}")
 
     def load_parameter(self, model, optimizer, scheduler=None, ck_pth=None, load_from_ck=False): # 加载模型、优化器、调度器
         self.full_cpu() # 打印配置信息
@@ -90,58 +119,53 @@ class Cl_Frame:
         print(f"Checkpoint saved at epoch {epoch + 1}")
 
     def train(self, model, optimizer, dataloader, scheduler=None, ck_pth=None, clean_noise_samples=False, load_from_ck=False, clean_th=0.99):
-        log_writer = open(self.log_path, 'w')
+        self.log_writer = open(self.log_path, 'w')
         if not os.path.exists(self.tensorboard_dir):
             os.makedirs(self.tensorboard_dir)
-        writer = SummaryWriter(log_dir=self.tensorboard_dir)
+        self.writer = SummaryWriter(log_dir=self.tensorboard_dir)
         model.to(self.device)
         self.load_parameter(model=model, optimizer=optimizer, scheduler=scheduler, ck_pth=ck_pth, load_from_ck=load_from_ck) # 初始化模型
         model.train() # 开启训练模式，自训练没有测试模式，所以这个可以在训练之前设置
-        for epoch in range(self.start_epoch, self.epochs):
-            running_loss = 0.0
-            for block in tqdm(dataloader, total=len(dataloader), desc="Train", leave=True):
-                block = block.to(self.device) # batch,C,H,W
-                block1 = self.augment(block).detach()
-                block2 = self.augment(block).detach()
-                optimizer.zero_grad()  # 清空梯度
-                embedding, out = model(torch.cat((block1, block2), dim=0).unsqueeze(1))
-                if clean_noise_samples:
-                    self.infonce.cosine_similarity_matrix(embedding, th=clean_th)
 
-                loss = self.infonce(out)  # 对比损失
-                loss.backward()  # 反向传播
-                optimizer.step()  # 更新权重
-                running_loss += loss.item()
-            avg_loss = running_loss / len(dataloader)
-            current_lr = optimizer.param_groups[0]['lr']
-            result = f"Epoch-{epoch + 1} , Loss: {avg_loss:.8f}, Lr: {current_lr:.8f}"
-            log_writer.write(result + '\n') # 记录训练过程
-            writer.add_scalar('Train/Loss', avg_loss, epoch) # 记录到tensorboard
-            print(result)
-            if avg_loss >= self.train_epoch_min_loss:  # 若当前epoch的loss大于等于之前最小的loss
-                pass
-            else:
-                self.train_epoch_min_loss = avg_loss
-                self.save_model(model=model, optimizer=optimizer, scheduler=scheduler, epoch=epoch, avg_loss=avg_loss)
-            if (epoch + 1) < self.warmup_epochs or current_lr <= self.min_lr:
-                pass
-            else:
-                scheduler.step()
-            log_writer.flush()
-        log_writer.close()
-        writer.close()
+        try:
+            for epoch in range(self.start_epoch, self.epochs):
+                running_loss = 0.0
+                for block in tqdm(dataloader, total=len(dataloader), desc="Train", leave=True):
+                    block = block.to(self.device) # batch,C,H,W
+                    block1 = self.augment(block).detach()
+                    block2 = self.augment(block).detach()
+                    optimizer.zero_grad()  # 清空梯度
+                    embedding, out = model(torch.cat((block1, block2), dim=0).unsqueeze(1))
+                    if clean_noise_samples:
+                        self.infonce.cosine_similarity_matrix(embedding, th=clean_th)
 
-    def del_logs(self):
-        '''删除多余logs文件'''
-        get_basename = lambda f: os.path.splitext(f)[0]
-        logs_dir = os.path.join(self.parent_dir, 'logs')
-        models_dir = os.path.join(self.parent_dir, 'models')
-        log_files = {get_basename(f) for f in os.listdir(logs_dir)
-                     if os.path.isfile(os.path.join(logs_dir, f))}
-        model_files = {get_basename(f) for f in os.listdir(models_dir)
-                       if os.path.isfile(os.path.join(models_dir, f))}
-        for f in os.listdir(logs_dir):
-            if (get_basename(f) in log_files - model_files and
-                    os.path.isfile(os.path.join(logs_dir, f))):
-                os.remove(os.path.join(logs_dir, f))
-        print("Excess log files cleaned up")
+                    loss = self.infonce(out)  # 对比损失
+                    loss.backward()  # 反向传播
+                    optimizer.step()  # 更新权重
+                    running_loss += loss.item()
+                avg_loss = running_loss / len(dataloader)
+                current_lr = optimizer.param_groups[0]['lr']
+                result = f"Epoch-{epoch + 1} , Loss: {avg_loss:.8f}, Lr: {current_lr:.8f}"
+                self.log_writer.write(result + '\n') # 记录训练过程
+                self.writer.add_scalar('Train/Loss', avg_loss, epoch) # 记录到tensorboard
+                print(result)
+                if avg_loss >= self.train_epoch_min_loss:  # 若当前epoch的loss大于等于之前最小的loss
+                    pass
+                else:
+                    self.train_epoch_min_loss = avg_loss
+                    self.save_model(model=model, optimizer=optimizer, scheduler=scheduler, epoch=epoch, avg_loss=avg_loss)
+                if (epoch + 1) < self.warmup_epochs or current_lr <= self.min_lr:
+                    pass
+                else:
+                    scheduler.step()
+                self.log_writer.flush()
+
+        except Exception as e:
+                print(f"Training interrupted due to: {str(e)}")
+                raise  # 重新抛出异常以便外部处理
+        
+        finally:
+            self.log_writer.close()
+            self.writer.close()
+            print("Training completed. Program exited.")
+            os._exit(0) # 退出主程序

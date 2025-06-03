@@ -6,7 +6,7 @@ if str(project_root) not in sys.path:
     sys.path.append(str(project_root))
 
 import h5py
-from contrastive_learning.models.Data import SSF_3D,read_tif_with_gdal
+from contrastive_learning.Models.Data import SSF_3D,read_tif_with_gdal
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from utils import read_txt_to_list

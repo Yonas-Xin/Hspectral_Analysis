@@ -3,9 +3,9 @@ base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(base_path)
 import torch
 import numpy as np
-from contrastive_learning.models.Data import SSF_3D
+from contrastive_learning.Models.Data import SSF_3D
 from torch.utils.data import DataLoader
-from models.Models import Spe_Spa_Attenres
+from contrastive_learning.Models.Models import Spe_Spa_Attenres
 from utils import read_txt_to_list
 from tqdm import tqdm
 if __name__ == '__main__':

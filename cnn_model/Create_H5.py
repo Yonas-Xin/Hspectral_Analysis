@@ -1,7 +1,7 @@
 import sys, os
 base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(base_path)
-from cnn_model.models.Data import Moni_leaning_dataset,read_tif_with_gdal
+from cnn_model.Models.Data import Moni_leaning_dataset,read_tif_with_gdal
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from utils import read_txt_to_list

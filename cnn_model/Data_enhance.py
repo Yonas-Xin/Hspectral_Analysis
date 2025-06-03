@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch
 from utils import read_txt_to_list,write_list_to_txt
 import os.path
-from cnn_model.models.Data import Moni_leaning_dataset
+from cnn_model.Models.Data import Moni_leaning_dataset
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 import gdal_utils

@@ -1,2 +1,15 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+*.tif
+*.log
+*.pyc
+*.h5
+*.pth
+*.npz
+*.pth
+*.shp
+*.dbf
+*.prj
+*.shx
+*.zip
+*.png

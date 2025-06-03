@@ -102,7 +102,7 @@ def save_img(img1, img2, outpath):
     plt.close()
 
 if __name__ == '__main__':
-    from models.Models import CNN_3d,Constrastive_learning_Model
+    from cnn_model.Models.Models import Constrastive_learning_Model
     from datetime import datetime
 
     image_block_size=512

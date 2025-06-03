@@ -3,20 +3,17 @@ base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(base_path)
 import torch
 import torch.optim as optim
-from models.Models import CNN_3d, Constrastive_learning_Model
-from cnn_model.models.Data import Moni_leaning_dataset,MoniHDF5_leaning_dataset
+from cnn_model.Models.Models import Constrastive_learning_Model
+from cnn_model.Models.Data import Moni_leaning_dataset,MoniHDF5_leaning_dataset
 from torch.optim.lr_scheduler import StepLR,ExponentialLR,ReduceLROnPlateau
-from models.Frame import classifier_Frame
-import sys
-print(sys.path)
-
+from cnn_model.Models.Frame import Cnn_model_frame
 from utils import read_txt_to_list
 from torch.utils.data import DataLoader
 
 if __name__ == '__main__':
     if_full_cpu = True  # 是否全负荷cpu
     load_from_ck = False  # 从断点处开始训练
-    epochs = 30  # epoch
+    epochs = 2  # epoch
     batch = 4 # batch
     init_lr = 1e-4  # lr
     min_lr = 1e-7  # 最低学习率
@@ -27,8 +24,8 @@ if __name__ == '__main__':
     print(model)
 
     config_model_name = "SSAR"  # 模型名称
-    train_images_dir = r'D:\Data\Hgy\research_samples2\Atrain_datasets.txt'  # 训练数据集
-    test_images_dir = r'D:\Data\Hgy\research_samples2\Aeval_datasets.txt'  # 测试数据集
+    train_images_dir = r'D:\Data\Hgy\research_train_samples\Aeval_datasets.txt'  # 训练数据集
+    test_images_dir = r'D:\Data\Hgy\research_train_samples\Aeval_datasets.txt'  # 测试数据集
     ck_pth = None
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # 显卡设置
 
@@ -46,8 +43,18 @@ if __name__ == '__main__':
                             persistent_workers=True)  # 数据迭代器
 
 
-    frame = classifier_Frame(model_name=config_model_name, epochs=epochs, min_lr=min_lr,
-                     warmup_epochs=warmup_epochs,
-                     device=device, if_full_cpu=if_full_cpu)
-    frame.train(model=model, optimizer=optimizer, scheduler=scheduler, train_dataloader=train_dataloader, eval_dataloader=eval_dataloader,
-                ck_pth=ck_pth, load_from_ck=load_from_ck)
+    frame = Cnn_model_frame(model_name=config_model_name, 
+                            epochs=epochs, 
+                            min_lr=min_lr,
+                            warmup_epochs=warmup_epochs,
+                            device=device, 
+                            if_full_cpu=if_full_cpu)
+    
+
+    frame.train(model=model, 
+                optimizer=optimizer, 
+                scheduler=scheduler, 
+                train_dataloader=train_dataloader, 
+                eval_dataloader=eval_dataloader,
+                ck_pth=ck_pth, 
+                load_from_ck=load_from_ck)

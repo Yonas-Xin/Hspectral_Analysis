@@ -10,8 +10,8 @@ import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import StepLR,ExponentialLR,ReduceLROnPlateau
-from models.Models import CNN_3d
-from cnn_model.models.Data import MoniHDF5_leaning_dataset
+from cnn_model.Models.Data import MoniHDF5_leaning_dataset
+from cnn_model.Models.Models import Constrastive_learning_Model
 from tqdm import tqdm
 from datetime import datetime
 def get_systime():
@@ -55,7 +55,7 @@ def run(rank, world_size):
     torch.cuda.set_device(rank)  # 这里设置 device ，后面可以直接使用 data.cuda(),否则需要指定 rank
 
     # load model
-    model = CNN_3d(24, out_classes=8).to(rank)
+    model = Constrastive_learning_Model(24, out_classes=8, in_shape=(138, 17, 17)).to(rank)
     optimizer = optim.Adam(model.parameters(), lr=init_lr)  # 优化器
     criterion = nn.CrossEntropyLoss()
     model = DDP(model, device_ids=[rank], output_device=rank, find_unused_parameters=True) # DDP包裹
