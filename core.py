@@ -9,6 +9,7 @@ from sklearn.preprocessing import StandardScaler
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from gdal_utils import nodata_value,mask_to_vector_gdal,vector_to_mask,write_data_to_tif,write_list_to_txt
+from utils import save_matrix_to_csv
 import spectral as spy
 from skimage.segmentation import slic
 from utils import block_generator
@@ -247,11 +248,16 @@ class Hyperspectral_Image:
         self.sampling_position[~mask] = 0
         return self.sampling_position
 
-    def crop_image_by_mask_block(self, filepath, image_block=256, block_size=30, scale=1e-4, name="Block_", dtype=gdal.GDT_Float32):
+    def crop_image_by_mask_block(self, filepath, image_block=256, block_size=30, scale=1e-4, 
+                                 position_mask=None, name="Block_", dtype=gdal.GDT_Float32):
         '''分块裁剪样本，适合无法一次加载到内存的大影像，生成一个txt文件（数据排序按照图像块中点行列顺序排序），依据的mask矩阵为sampling_position
-        后续考虑更换'''
-        if self.sampling_position is None or np.max(self.sampling_position)<=0:
+        后续考虑更换
+        return: None 生成txt文本，生成采样位置矩阵csv文件，生成分块影像数据'''
+        if position_mask is None:
+            position_mask = self.sampling_position
+        if position_mask is None or np.max(position_mask)<=0:
             raise ValueError('sampling_position have to be valid!')
+        save_matrix_to_csv(position_mask, os.path.join(filepath, '.sampling_position.csv')) # 保存采样位置矩阵
         geotransform = self.dataset.GetGeoTransform()
         projection = self.dataset.GetProjection()
         # info_image_block = open(os.path.join(filepath, f'a_block_clip_size_{image_block}.txt'),'w') # 用来记录image_block信息，方便还原
@@ -267,7 +273,7 @@ class Hyperspectral_Image:
         add_labels = False
         pbar = tqdm(total=int(self.rows/image_block+1)*int(self.cols/image_block+1))
         actual_indices = []
-        if np.max(self.sampling_position) > 1:  # 如果大于1说明裁剪的图像有标签
+        if np.max(position_mask) > 1:  # 如果大于1说明裁剪的图像有标签
             print('有标签，将额外生成标签至txt文件')
             add_labels = True
         else:
@@ -305,7 +311,7 @@ class Hyperspectral_Image:
 
                 row_block = min(image_block, self.rows - i) # 记录真实窗口大小
                 col_block = min(image_block, self.cols - j)
-                block_sampling_mask = self.sampling_position[i:i + row_block, j:j + col_block]
+                block_sampling_mask = position_mask[i:i + row_block, j:j + col_block]
                 # block_sampling_mask = np.pad(block_sampling_mask,[(left_top, right_bottom), (left_top, right_bottom)], 'constant')
                 # show_img(block_data)
                 _, block_rows, block_cols = block_data.shape

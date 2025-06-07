@@ -1,5 +1,6 @@
 import numpy as np
 import os
+import torch
 def block_generator(data, block_size=256):
     '''迭代器，输入一个影像，返回分块的位置掩膜'''
     if data.ndim == 3:
@@ -69,3 +70,27 @@ colors = [
     '#DEECF6', '#AFCBE2', '#E2F2CD', '#B6DAA7', '#F9D5D5',
     '#EF9BA1', '#FBE3C0', '#FBC99A', '#EBE0EF', '#C2B1D7',
 ]
+
+def save_matrix_to_csv(matrix, filename, delimiter=','):
+    """
+    将 NumPy 矩阵或 PyTorch 张量（二维）保存为 CSV 文件
+    
+    参数:
+        matrix: 输入的 NumPy 矩阵或 PyTorch 张量（二维）
+        filename: 要保存的 CSV 文件名（包括路径）
+        delimiter: CSV 分隔符，默认为 ','
+    
+    返回:
+        None
+    """
+    if not isinstance(matrix, (np.ndarray, torch.Tensor)):
+        raise ValueError("输入必须是 NumPy 数组或 PyTorch 张量")
+    if len(matrix.shape) > 2:
+        raise ValueError("输入必须是二维矩阵")
+    if isinstance(matrix, torch.Tensor):
+        matrix = matrix.detach().cpu().numpy() # 转为 NumPy 数组
+    if matrix.dtype == np.bool: # bool 类型转换为 int
+        matrix = matrix.astype(np.int16)
+    # 使用 NumPy 保存为 CSV
+    np.savetxt(filename, matrix, delimiter=delimiter, fmt='%s')
+    print(f"data has been saved as csv: {filename}")

@@ -173,6 +173,7 @@ class Cnn_model_frame:
                     scheduler.step()
                 self.log_writer.flush()
         except Exception as e:
+            self.clean_up()
             print(f"Training interrupted due to: {str(e)}")
             raise
         finally:

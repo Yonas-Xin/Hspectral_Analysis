@@ -11,9 +11,10 @@ from multiprocessing import cpu_count
 from torch.utils.tensorboard import SummaryWriter
 import torch
 from Models.loss import InfoNCELoss
+from utils import save_matrix_to_csv
 
 class Contrastive_learning_frame:
-    def __init__(self, augment, model_name, min_lr=1e-7, epochs=300, warmup_epochs=30,device=None, if_full_cpu=True):
+    def __init__(self, augment, model_name, min_lr=1e-7, epochs=300, warmup_epochs=30, device=None, if_full_cpu=True):
         self.augment = augment
         self.infonce = InfoNCELoss(temperature=0.07)
         self.min_lr = min_lr
@@ -161,6 +162,7 @@ class Contrastive_learning_frame:
                 self.log_writer.flush()
 
         except Exception as e:
+                self.clean_up()
                 print(f"Training interrupted due to: {str(e)}")
                 raise  # 重新抛出异常以便外部处理
         
@@ -169,3 +171,27 @@ class Contrastive_learning_frame:
             self.writer.close()
             print("Training completed. Program exited.")
             os._exit(0) # 退出主程序
+    
+class Contrasive_learning_predict_frame:
+    def __init__(self, device=None):
+        if device is None:
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        else: self.device = device
+        self.out_embedding = None
+    
+    def predict(self, model, dataloader):
+        model.to(self.device)
+        with torch.no_grad():
+            model.eval()
+            idx = 0
+            for image in tqdm(dataloader, total=len(dataloader)):
+                image = image.unsqueeze(1).to(self.device)
+                predict = model.predict(image)
+                if self.out_embedding is None:
+                    # 初始化输出嵌入矩阵，预分配内存
+                    embedding_nums = predict.shaoe[-1]
+                    self.out_embedding = torch.empty((len(dataloader.dataset), embedding_nums), dtype=torch.float32, device=self.device)
+                self.out_embedding[idx:idx+len(predict)] = predict
+                idx += len(predict)
+        self.out_embedding = self.out_embedding.cpu().numpy()
+        return self.out_embedding

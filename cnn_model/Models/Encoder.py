@@ -7,14 +7,14 @@ class Spe_Spa_Attenres_Encoder(nn.Module):
     def __init__(self,out_embedding=24, in_shape=(138,17,17)):
         super().__init__()
         bands, H, W = in_shape
-        self.spectral_attention = ECA_SpectralAttention_3d(138, 2,1)# 光谱注意力
+        self.spectral_attention = ECA_SpectralAttention_3d(bands, 2,1)# 光谱注意力
         self.conv_block = Common_3d(1,64,(7,1,1),(3,0,0), 1) # 光谱方向卷积
         self.res_block1 = Residual_block(64,64,(3,3,3),(1,1,1),1)
-        self.res_block2 = Residual_block(64,128,(3,3,3),(1,1,1),2)
+        self.res_block2 = Residual_block(64,128,(3,3,3),(1,1,1),2) # stride=2
         self.res_block3 = Residual_block(128,256,(3,3,3),(1,1,1),1)
-        self.res_block4 = Residual_block(256,512,(3,3,3),(1,1,1),2)
+        self.res_block4 = Residual_block(256,512,(3,3,3),(1,1,1),2) # stride=2
         self.res_block5 = Residual_block(512,512,(3,3,3),(1,1,1),1)
-        self.avg_pool = nn.AvgPool3d(2)
+        self.avg_pool = nn.AvgPool3d(2) # 立方体压缩
         in_feature = int(bands/8)*int(H/8)*int(W/8)*512
         self.linear = nn.Linear(in_feature, out_features=out_embedding)
     def forward(self, x):
@@ -27,8 +27,14 @@ class Spe_Spa_Attenres_Encoder(nn.Module):
         x = self.avg_pool(self.res_block5(x))
         x = x.view(x.shape[0], -1)
         return self.linear(x) # 返回注意力数据
+
+
     
 
+    
+# =================================================================================================
+# 编码器组件
+# =================================================================================================
 class Common_3d(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=(3,3,3), padding=(1,1,1), stride=1):
         super(Common_3d,self).__init__()
@@ -105,58 +111,3 @@ class ECA_SpectralAttention_3d(nn.Module):
         # 恢复形状为 (batch,1,1,1,bands)
         attn_weights = attn_weights.view(batch, 1, bands, 1, 1)
         return x * attn_weights
-
-class SpectralSpatialCNN(nn.Module):
-    def __init__(self, spectral_channels, spatial_channels, out_features=128):
-        """out_features: 输出特征数"""
-        super(SpectralSpatialCNN, self).__init__()
-        self.spectral_cnn = SpectralCNN(spectral_channels)
-        self.space_cnn = SpaceCNN(spatial_channels)
-
-        self.fc1 = nn.Linear(18048, out_features)
-    def forward(self, spectral, spatial):
-        spectral = self.spectral_cnn(spectral)
-        spatial = self.space_cnn(spatial)
-        return self.fc1(torch.cat((spatial, spectral), dim=1))
-
-class SpectralCNN(nn.Module):
-    def __init__(self, input_channels):
-        super(SpectralCNN, self).__init__()
-        self.conv1 = nn.Conv1d(in_channels=input_channels, out_channels=128, kernel_size=5, stride=1, padding=2)
-        self.conv2 = nn.Conv1d(in_channels=128, out_channels=128, kernel_size=3, stride=1, padding=1)
-        self.conv3 = nn.Conv1d(in_channels=128, out_channels=128, kernel_size=3, stride=1, padding=1)
-        self.conv4 = nn.Conv1d(in_channels=128, out_channels=128, kernel_size=3, stride=1, padding=1)
-        self.conv5 = nn.Conv1d(in_channels=128, out_channels=128, kernel_size=3, stride=1, padding=1)
-        self.pool = nn.MaxPool1d(kernel_size=2, stride=2)
-
-    def forward(self, x):
-        """输入：(batch_size, channels, width)"""
-        x = F.relu(self.conv1(x),inplace=True)
-        x = F.relu(self.conv2(x),inplace=True)
-        x = F.relu(self.conv3(x),inplace=True)
-        x = F.relu(self.conv4(x),inplace=True)
-        x = self.pool(self.conv5(x))
-        x = x.view(x.size(0), -1)  # 展平
-        return x
-
-class SpaceCNN(nn.Module):
-    def __init__(self, input_channels):
-        super(SpaceCNN, self).__init__()
-        self.conv1 = nn.Conv2d(in_channels=input_channels, out_channels=64, kernel_size=3, stride=1, padding=1)
-        self.conv2 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1)
-        self.conv3 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1)
-        self.conv4 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1)
-        self.conv5 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1)
-        self.pool = nn.MaxPool2d(2,2)
-    def forward(self, x):
-        """输入：(batch_size, channels, height, width)"""
-        x = F.relu(self.conv1(x),inplace=True)
-        x1 = F.relu(self.conv2(x),inplace=True)
-        x1 = F.relu(self.conv3(x1),inplace=True)
-        x1 = F.relu(self.conv4(x1),inplace=True)
-        x1 = self.pool(self.conv5(x1+x))
-        x1 = x1.reshape(x1.size(0), -1)  # 展平
-        return x1
-
-if __name__ == '__main__':
-    x = torch.randn((1,1,138,17,17))
