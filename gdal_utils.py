@@ -5,12 +5,10 @@ try:
 except ImportError:
     print('gdal is not used')
 import numpy as np
-from threading import Lock
 from tqdm import tqdm
-gdal_lock = Lock()
 nodata_value = 0
 
-def write_data_to_tif(output_file, data, geotransform, projection, nodata_value=nodata_value, dtype=gdal.GDT_Float32):
+def write_data_to_tif(output_file, data, geotransform, projection, nodata_value=nodata_value):
     """
     将数据写入 GeoTIFF 文件，并保留与原文件相同的元数据
     Parameters:
@@ -18,12 +16,14 @@ def write_data_to_tif(output_file, data, geotransform, projection, nodata_value=
         data: ndarray, 写入的数据，形状为(row, col, bands)
         geotransform: tuple, GeoTIFF 的地理变换参数
         projection: str, WKT 格式的投影信息
-        dtype: gdal 数据类型, 默认 gdal.GDT_Float32
     Returns:
         None
     """
     bands, rows, cols =data.shape
-    data = data.astype(np.float32)
+    if data.dtype == np.int16:
+        dtype = gdal.GDT_Int16
+    else:
+        dtype = gdal.GDT_Float32
     # 创建文件
     driver = gdal.GetDriverByName("GTiff")
     dataset = driver.Create(output_file, cols, rows, bands, dtype)
@@ -45,13 +45,13 @@ def write_data_to_tif(output_file, data, geotransform, projection, nodata_value=
 
 def read_tif_with_gdal(tif_path):
     '''读取栅格原始数据(形状为 bands x rows x cols)'''
-    gdal.UseExceptions()
-    with gdal_lock:
-        dataset = gdal.Open(tif_path)
-        dataset = dataset.ReadAsArray()
+    dataset = gdal.Open(tif_path)
+    dataset = dataset.ReadAsArray()
+    if dataset.dtype == np.int16:
+        dataset = dataset.astype(np.float32) * 1e-4
     return dataset
 
-def crop_image_by_mask(data, mask, geotransform, projection, filepath, block_size=30, name="Block_", dtype = gdal.GDT_Float32):
+def crop_image_by_mask(data, mask, geotransform, projection, filepath, block_size=30, name="Block_"):
     """
     根据 mask 的类别，裁剪影像为 30x30 的小块
     :param data: 输入影像，(C, H, W)
@@ -85,7 +85,7 @@ def crop_image_by_mask(data, mask, geotransform, projection, filepath, block_siz
                 # 计算新的 GeoTransform
                 new_geotransform = (originX, geotransform[1], geotransform[2], originY, geotransform[4], geotransform[5])
                 block = data[:, row:row + block_size, col:col + block_size]
-                write_data_to_tif(path, block, geotransform=new_geotransform, projection=projection, dtype=dtype)
+                write_data_to_tif(path, block, geotransform=new_geotransform, projection=projection)
                 num += 1
                 if add_labels:
                     pathlist.append(path + f' {mask[row, col]-1}')
@@ -198,41 +198,6 @@ def vector_to_mask(shapefile, geotransform, rows, cols):
     data_source = None
     return mask_matrix
 
-def vector_to_raster_matrix_gdal(raster_dataset, vector_path, attribute="class"):
-    """
-    使用GDAL将矢量文件转换为与栅格一致的NumPy矩阵，值为矢量面属性（class），未覆盖区域填充0
-    :param raster_path: 参考栅格文件路径
-    :param vector_path: 矢量文件路径（Shapefile）
-    :param attribute: 矢量属性字段名称（默认 'class'）
-    :return: NumPy矩阵 (H, W)
-    """
-    geotransform = raster_dataset.GetGeoTransform()  # 仿射变换
-    projection = raster_dataset.GetProjection()  # 投影信息
-    width = raster_dataset.RasterXSize  # 栅格宽度
-    height = raster_dataset.RasterYSize  # 栅格高度
-
-    # 2. 打开矢量文件
-    vector_ds = ogr.Open(vector_path)
-    if not vector_ds:
-        raise RuntimeError(f"无法打开矢量文件 {vector_path}")
-
-    layer = vector_ds.GetLayer()
-
-    # 3. 创建一个内存栅格数据集，存储矢量化数据
-    mem_driver = gdal.GetDriverByName("MEM")
-    mem_raster = mem_driver.Create("", width, height, 1, gdal.GDT_Int16)
-    mem_raster.SetGeoTransform(geotransform)  # 设定仿射变换
-    mem_raster.SetProjection(projection)  # 设定投影
-
-    band = mem_raster.GetRasterBand(1)
-    band.Fill(0)  # 其他区域填充 0
-    gdal.RasterizeLayer(mem_raster, [1], layer, burn_values = [1]) # 矢量覆盖区填充1
-    matrix = band.ReadAsArray()
-    vector_ds = None
-    mem_raster = None
-
-    return matrix
-
 def point_value_merge(shapefile, value:list):
     """
     要素属性修正
@@ -271,7 +236,7 @@ def point_value_merge(shapefile, value:list):
         data_source.Destroy()
         data_source = None
 
-def crop_image_by_mask_block(image_file, out_filepath, sampling_position, image_block=256, block_size=30, name="Block_", dtype=gdal.GDT_Float32):
+def crop_image_by_mask_block(image_file, out_filepath, sampling_position, image_block=256, block_size=30, name="Block_"):
     '''裁剪样本，适合无法一次加载到内存的大影像'''
     dataset = gdal.Open(image_file)
     geotransform = dataset.GetGeoTransform()
@@ -320,7 +285,9 @@ def crop_image_by_mask_block(image_file, out_filepath, sampling_position, image_
                 bottom_pad = right_bottom
             else:bottom_pad = 0
                 # 读取当前块的所有波段数据（形状: [bands, actual_rows, actual_cols]）
-            block_data = dataset.ReadAsArray(xoff=xoff, yoff=yoff, xsize=actual_cols, ysize=actual_rows) * 1e-4
+            block_data = dataset.ReadAsArray(xoff=xoff, yoff=yoff, xsize=actual_cols, ysize=actual_rows)
+            if block_data.dtype == np.int16:
+                block_data = block_data.astype(np.float32) * 1e-4
             block_data = np.pad(block_data,[(0, 0), (top_pad, bottom_pad), (left_pad, right_pad)], 'constant')
 
             row_block = min(image_block, rows - i) # 记录真实窗口大小
@@ -341,7 +308,7 @@ def crop_image_by_mask_block(image_file, out_filepath, sampling_position, image_
                         new_geotransform = (oringinX, geotransform[1], geotransform[2], oringinY, geotransform[4], geotransform[5])
                         path = os.path.join(out_filepath, name + f'{block_size}_{block_size}_{num}.tif')
                         block = block_data[:, row:row + block_size, col:col+block_size]
-                        write_data_to_tif(path, block, geotransform=new_geotransform, projection=projection, dtype=dtype)
+                        write_data_to_tif(path, block, geotransform=new_geotransform, projection=projection)
                         if add_labels:
                             pathlist.append(path + f' {block_sampling_mask[row, col] - 1}')
                         else:

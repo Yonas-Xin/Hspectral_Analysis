@@ -19,6 +19,8 @@ def read_tif_with_gdal(tif_path):
     返回dataset[bands,H,W]'''
     dataset = gdal.Open(tif_path)
     dataset = dataset.ReadAsArray()
+    if dataset.dtype == np.int16:
+        dataset = dataset.astype(np.float32) * 1e-4
     return dataset
 
 class SSF(Dataset):

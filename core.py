@@ -17,7 +17,7 @@ from algorithms import *
 
 gdal.UseExceptions()
 class Hyperspectral_Image:
-    '''经过该类处理的数据一律变为小于1的浮点数，该类的属性数据形状一律为[H,W,C]'''
+    '''如果数据是int16类型，自动缩放为0-1的光谱反射率范围'''
     def __init__(self):
         self.dataset, self.rows, self.cols, self.bands = None, None, None, None
         self.no_data = None
@@ -72,10 +72,16 @@ class Hyperspectral_Image:
         r_band = self.get_band_data(r)
         g_band = self.get_band_data(g)
         b_band = self.get_band_data(b)
-        if stretch:
-            r_band = linear_2_percent_stretch(r_band, self.backward_mask)
-            g_band = linear_2_percent_stretch(g_band, self.backward_mask)
-            b_band = linear_2_percent_stretch(b_band, self.backward_mask)
+        try:# 拉伸出错可能是mask全为False，忽略
+            if stretch:
+                r_band = linear_2_percent_stretch(r_band, self.backward_mask)
+                g_band = linear_2_percent_stretch(g_band, self.backward_mask)
+                b_band = linear_2_percent_stretch(b_band, self.backward_mask)
+        except ValueError as e:
+            print(f'Error in linear stretch: {e}')
+            r_band = r_band[self.backward_mask]
+            g_band = g_band[self.backward_mask]
+            b_band = b_band[self.backward_mask]
         rgb = np.dstack([b_band, g_band, r_band]).squeeze().astype(np.float32)
         self.ori_img = np.zeros((self.rows, self.cols, 3)) + 1
         self.ori_img[self.backward_mask] = rgb
@@ -86,10 +92,16 @@ class Hyperspectral_Image:
         r_band = self.enhance_data[:, :, r-1]
         g_band = self.enhance_data[:, :, g-1]
         b_band = self.enhance_data[:, :, b-1]
-        if stretch:
-            r_band = linear_2_percent_stretch(r_band, self.backward_mask)
-            g_band = linear_2_percent_stretch(g_band, self.backward_mask)
-            b_band = linear_2_percent_stretch(b_band, self.backward_mask)
+        try:
+            if stretch:
+                r_band = linear_2_percent_stretch(r_band, self.backward_mask)
+                g_band = linear_2_percent_stretch(g_band, self.backward_mask)
+                b_band = linear_2_percent_stretch(b_band, self.backward_mask)
+        except ValueError as e:
+            print(f'Error in linear stretch: {e}')
+            r_band = r_band[self.backward_mask]
+            g_band = g_band[self.backward_mask]
+            b_band = b_band[self.backward_mask]
         rgb = np.dstack([b_band, g_band, r_band]).squeeze().astype(np.float32)
         self.enhance_img = np.zeros((self.rows, self.cols, 3)) + 1
         self.enhance_img[self.backward_mask] = rgb
@@ -100,25 +112,25 @@ class Hyperspectral_Image:
         if self.dataset is None:
             return None
         band = self.dataset.GetRasterBand(band_idx)
-        return band.ReadAsArray().astype(np.float32)
-
-    def read_pixel(self, row, col):
-        pixel_value = []
-        for i in range(1,self.bands+1):
-            band = self.dataset.GetRasterBand(i)
-            value = band.ReadAsArray()[row,col]/10000
-            pixel_value.append(value)
-        return pixel_value
+        band_data = band.ReadAsArray()
+        if band_data.dtype == np.int16:  # 如果是int16类型数据，进行缩放
+            band_data = band_data.astype(np.float32) / 10000
+        return band_data
 
     def get_dataset(self, scale=1e-4):
-        '''返回形状：rows，cols，bands'''
+        '''return: (bands, rows, cols)的numpy数组，数据类型为float32'''
         dataset = self.dataset.ReadAsArray()
-        dataset = dataset.astype(np.float32)*scale
+        if dataset.dtype == np.int16: # 如果是int16类型数据，进行缩放
+            dataset = dataset.astype(np.float32) * scale
         return dataset
 
     def ignore_backward(self, nodata_value = nodata_value):
         '''分块计算背景掩膜值，默认分块大小为512'''
         block_size = 512
+        if self.cols> (2 * block_size) and self.rows > (2 * block_size):
+            pass
+        else:
+            block_size = min(self.rows, self.cols) # 如果行列都较小，则使用行列最小值作为分块大小
         mask = np.empty((self.rows, self.cols), dtype=bool)
         for i in range(0, self.rows, block_size):
             for j in range(0, self.cols, block_size):
@@ -126,7 +138,7 @@ class Hyperspectral_Image:
                 actual_rows = min(block_size, self.rows - i)
                 actual_cols = min(block_size, self.cols - j)
                 # 读取当前块的所有波段数据（形状: [bands, actual_rows, actual_cols]）
-                block_data = self.dataset.ReadAsArray(xoff=j, yoff=i, xsize=actual_cols, ysize=actual_rows).astype(np.int16)
+                block_data = self.dataset.ReadAsArray(xoff=j, yoff=i, xsize=actual_cols, ysize=actual_rows)
                 block_mask = np.all(block_data == nodata_value, axis=0)
                 mask[i:i + actual_rows, j:j + actual_cols] = ~block_mask
         return mask
@@ -218,7 +230,9 @@ class Hyperspectral_Image:
                 actual_rows = min(block_size, self.rows - i)
                 actual_cols = min(block_size, self.cols - j)
                 # 读取当前块的所有波段数据（形状: [bands, actual_rows, actual_cols]）
-                block_data = self.dataset.ReadAsArray(xoff=j, yoff=i, xsize=actual_cols, ysize=actual_rows) * 1e-4
+                block_data = self.dataset.ReadAsArray(xoff=j, yoff=i, xsize=actual_cols, ysize=actual_rows)
+                if block_data.dtype == np.int16:
+                    block_data = block_data.astype(np.float32) * 1e-4
                 yield block_data
 
     def block_mnf_ppi(self, block_size=256):
@@ -248,10 +262,9 @@ class Hyperspectral_Image:
         self.sampling_position[~mask] = 0
         return self.sampling_position
 
-    def crop_image_by_mask_block(self, filepath, image_block=256, block_size=30, scale=1e-4, 
-                                 position_mask=None, name="Block_", dtype=gdal.GDT_Float32):
-        '''分块裁剪样本，适合无法一次加载到内存的大影像，生成一个txt文件（数据排序按照图像块中点行列顺序排序），依据的mask矩阵为sampling_position
-        后续考虑更换
+    def crop_image_by_mask_block(self, filepath, image_block=256, block_size=30, position_mask=None, name="Block_"):
+        '''分块裁剪样本，适合无法一次加载到内存的大影像，生成一个txt文件（数据排序按照图像块中点行列顺序排序），依据的mask矩阵为sampling_position，后续考虑更换
+        生成的影像自动转化为float32类型，缩放为0-1范围
         return: None 生成txt文本，生成采样位置矩阵csv文件，生成分块影像数据'''
         if position_mask is None:
             position_mask = self.sampling_position
@@ -306,7 +319,9 @@ class Hyperspectral_Image:
                     bottom_pad = right_bottom
                 else:bottom_pad = 0
                     # 读取当前块的所有波段数据（形状: [bands, actual_rows, actual_cols]）
-                block_data = self.dataset.ReadAsArray(xoff=xoff, yoff=yoff, xsize=actual_cols, ysize=actual_rows) * scale
+                block_data = self.dataset.ReadAsArray(xoff=xoff, yoff=yoff, xsize=actual_cols, ysize=actual_rows)
+                if block_data.dtype == np.int16:
+                    block_data = block_data.astype(np.float32) * 1e-4
                 block_data = np.pad(block_data,[(0, 0), (top_pad, bottom_pad), (left_pad, right_pad)], 'constant')
 
                 row_block = min(image_block, self.rows - i) # 记录真实窗口大小
@@ -329,7 +344,7 @@ class Hyperspectral_Image:
                             new_geotransform = (oringinX, geotransform[1], geotransform[2], oringinY, geotransform[4], geotransform[5])
                             path = os.path.join(filepath, name + f'{block_size}_{block_size}_{num}.tif')
                             block = block_data[:, row:row + block_size, col:col+block_size]
-                            write_data_to_tif(path, block, geotransform=new_geotransform, projection=projection, dtype=dtype)
+                            write_data_to_tif(path, block, geotransform=new_geotransform, projection=projection)
                             if add_labels:
                                 pathlist.append(path + f' {block_sampling_mask[row, col] - 1}')
                             else:
@@ -407,7 +422,7 @@ def linear_2_percent_stretch(band_data, mask=None):
     '''
     线性拉伸
     :param band_data: 单波段数据[rows, cols]
-    :param mask: [rows, cols]
+    :param mask: [rows, cols], bool类型，True表示有效像元
     :return: stretched_band[valid_pixels,]
     '''
     band_data = band_data[mask] if mask is not None else band_data.reshape(band_data.shape[0]*band_data.shape[1])

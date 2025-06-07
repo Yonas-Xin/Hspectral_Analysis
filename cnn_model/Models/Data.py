@@ -1,7 +1,6 @@
 import numpy as np
 import torch
 from torch.utils.data import Dataset
-from threading import Lock
 try:
     import h5pickle
 except:
@@ -17,6 +16,8 @@ def read_tif_with_gdal(tif_path):
     返回dataset[bands,H,W]'''
     dataset = gdal.Open(tif_path)
     dataset = dataset.ReadAsArray()
+    if dataset.dtype == np.int16:
+        dataset = dataset.astype(np.float32) * 1e-4
     return dataset
 class Moni_leaning_dataset(Dataset):
     '''用于3D——CNN训练和测试'''
