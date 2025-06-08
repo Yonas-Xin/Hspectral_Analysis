@@ -284,7 +284,6 @@ class Hyperspectral_Image:
         num = 1
         pathlist = []
         add_labels = False
-        pbar = tqdm(total=int(self.rows/image_block+1)*int(self.cols/image_block+1))
         actual_indices = []
         if np.max(position_mask) > 1:  # 如果大于1说明裁剪的图像有标签
             print('有标签，将额外生成标签至txt文件')
@@ -334,6 +333,7 @@ class Hyperspectral_Image:
                 oringiny = geotransform[3]+i*geotransform[5]
                 if np.all(block_sampling_mask==0):
                     continue
+                pbar = tqdm(total=int(np.sum(block_sampling_mask > 0))) # 进度条
                 for row in range(row_block):
                     for col in range(col_block):
                         if block_sampling_mask[row, col] > 0:  # 中点位置不是背景和噪声
@@ -350,7 +350,7 @@ class Hyperspectral_Image:
                             else:
                                 pathlist.append(path)
                             num+=1
-                pbar.update(1)
+                            pbar.update(1)
         paired = list(zip(actual_indices, pathlist)) # （row，cols）与地址配对
         paired_sorted = sorted(paired, key=lambda x: (x[0][0], x[0][1])) # 按照row，col排序
         sorted_paths = [x[1] for x in paired_sorted]
@@ -358,47 +358,49 @@ class Hyperspectral_Image:
         write_list_to_txt(sorted_paths, dataset_path) # 打印txt文件
         print('样本裁剪完成')
 
-    # def block_images(self, image_block=256, block_size=30, scale=1e-4):
-    #     '''分块裁剪影像，输出'''
-    #     if block_size % 2 == 0:  # 如果block_size是一偶数，以像素点为中心，左上角区域比右下角区域少一
-    #         left_top = int(block_size / 2 - 1)
-    #         right_bottom = int(block_size / 2)
-    #     else:
-    #         left_top = int(block_size // 2)
-    #         right_bottom = int(block_size // 2)
-    #     for i in range(0, self.rows, image_block):
-    #         for j in range(0, self.cols, image_block):
-    #             # 计算当前块的实际高度和宽度（避免越界）
-    #             actual_rows = min(image_block + block_size - 1, self.rows - i)  # 实际高
-    #             actual_cols = min(image_block + block_size - 1, self.cols - j)  # 实际宽
-    #             if (j - left_top) < 0:
-    #                 xoff = 0
-    #                 actual_cols -= left_top
-    #                 left_pad = left_top
-    #             else:
-    #                 xoff = j - left_top
-    #                 left_pad = 0
-    #             if (i - left_top) < 0:
-    #                 yoff = 0
-    #                 actual_rows -= left_top
-    #                 top_pad = left_top
-    #             else:
-    #                 yoff = i - left_top
-    #                 top_pad = 0
-    #             if actual_cols == (self.cols - j):
-    #                 actual_cols += left_top
-    #                 right_pad = right_bottom
-    #             else:
-    #                 right_pad = 0
-    #             if actual_rows == (self.rows - i):
-    #                 actual_rows += left_top
-    #                 bottom_pad = right_bottom
-    #             else:
-    #                 bottom_pad = 0
-    #             # 读取当前块的所有波段数据（形状: [bands, actual_rows, actual_cols]）
-    #             block_data = self.dataset.ReadAsArray(xoff=xoff, yoff=yoff, xsize=actual_cols, ysize=actual_rows) * scale
-    #             block_data = np.pad(block_data, [(0, 0), (top_pad, bottom_pad), (left_pad, right_pad)], 'constant')
-    #             yield block_data, i, j
+    def block_images(self, image_block=256, block_size=30):
+        """迭代器，返回分块数据和块的左上角坐标"""
+        if block_size % 2 == 0:  # 如果block_size是一偶数，以像素点为中心，左上角区域比右下角区域少一
+            left_top = int(block_size / 2 - 1)
+            right_bottom = int(block_size / 2)
+        else:
+            left_top = int(block_size // 2)
+            right_bottom = int(block_size // 2)
+        for i in range(0, self.rows, image_block):
+            for j in range(0, self.cols, image_block):
+                # 计算当前块的实际高度和宽度（避免越界）
+                actual_rows = min(image_block + block_size - 1, self.rows - i)  # 实际高
+                actual_cols = min(image_block + block_size - 1, self.cols - j)  # 实际宽
+                if (j - left_top) < 0:
+                    xoff = 0
+                    actual_cols -= left_top
+                    left_pad = left_top
+                else:
+                    xoff = j - left_top
+                    left_pad = 0
+                if (i - left_top) < 0:
+                    yoff = 0
+                    actual_rows -= left_top
+                    top_pad = left_top
+                else:
+                    yoff = i - left_top
+                    top_pad = 0
+                if actual_cols == (self.cols - j):
+                    actual_cols += left_top
+                    right_pad = right_bottom
+                else:
+                    right_pad = 0
+                if actual_rows == (self.rows - i):
+                    actual_rows += left_top
+                    bottom_pad = right_bottom
+                else:
+                    bottom_pad = 0
+                # 读取当前块的所有波段数据（形状: [bands, actual_rows, actual_cols]）
+                block_data = self.dataset.ReadAsArray(xoff=xoff, yoff=yoff, xsize=actual_cols, ysize=actual_rows)
+                if block_data.dtype == np.int16:
+                    block_data = block_data.astype(np.float32) * 1e-4
+                block_data = np.pad(block_data, [(0, 0), (top_pad, bottom_pad), (left_pad, right_pad)], 'constant')
+                yield block_data, i, j
 
     def save_tif(self, filename, img_data):
         '''将（rows，cols， bands）的数据存为tif格式'''
