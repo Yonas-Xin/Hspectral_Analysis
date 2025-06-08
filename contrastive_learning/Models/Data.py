@@ -57,6 +57,8 @@ class SSF_3D(Dataset):
         将列表划分为数据集,[batch, 1, H, w, bands]
         """
         self.image_paths = data_list
+        image = self.__getitem__(0)
+        self.data_shape = image.shape
 
     def __len__(self):
         return len(self.image_paths)

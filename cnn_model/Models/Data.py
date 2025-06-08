@@ -29,6 +29,8 @@ class Moni_leaning_dataset(Dataset):
         """
         self.image_paths = data_list
         self.transform = transform
+        image, label = self.__getitem__(0)
+        self.data_shape = image.shape  # 获取数据形状
 
     def __len__(self):
         return len(self.image_paths)

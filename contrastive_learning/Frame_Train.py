@@ -20,19 +20,22 @@ if __name__ == '__main__':
     init_lr = 1e-4  # lr
     min_lr = 1e-7 # 最低学习率
     warmup_epochs = 0
-    model = Spe_Spa_Attenres(out_embedding=24, in_shape=(138, 17, 17))
     config_model_name = "Spe_Spa_Atten_pretrain"  # 模型名称
-    images_dir = r'D:\Data\Hgy\test\.datasets.txt' # 数据集
-    ck_pth = r'D:\Programing\pythonProject\Hyperspectral_Analysis\contrastive_learning\models\Spe_Spa_Atten_pretrain_202504252344.pth' # 保存的权重文件
+    images_dir = r'D:\Data\Hgy\龚鑫涛试验数据\clip_test\.datasets.txt' # 数据集
+    ck_pth = None
+    # ck_pth = r'D:\Programing\pythonProject\Hyperspectral_Analysis\contrastive_learning\models\Spe_Spa_Atten_pretrain_202504252344.pth' # 保存的权重文件
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # 显卡设置
 
-    optimizer = optim.Adam(model.parameters(), lr=init_lr)  # 优化器
-    scheduler = StepLR(optimizer, step_size=10, gamma=0.1) # 学习率调度器
-    augment = HighDimBatchAugment(crop_size=(17, 17))  # 数据特征转换
+
 
     # 配置dataloader
     image_lists = read_txt_to_list(images_dir)
     dataset = SSF_3D(image_lists)
+    model = Spe_Spa_Attenres(out_embedding=24, in_shape=dataset.data_shape)  # 模型实例化
+    print(f"Image shape: {dataset.data_shape}")
+    optimizer = optim.Adam(model.parameters(), lr=init_lr)  # 优化器
+    scheduler = StepLR(optimizer, step_size=10, gamma=0.1) # 学习率调度器
+    augment = HighDimBatchAugment(crop_size=(17, 17))  # 数据特征转换
     dataloader = DataLoader(dataset, batch_size=batch, shuffle=True, pin_memory=True, num_workers=2, prefetch_factor=2,
                             persistent_workers=True)  # 数据迭代器
 
