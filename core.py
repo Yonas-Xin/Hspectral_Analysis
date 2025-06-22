@@ -468,7 +468,8 @@ class Hyperspectral_Image:
                 if block_data.dtype == np.int16:
                     block_data = block_data.astype(np.float32) * 1e-4
                 block_data = np.pad(block_data, [(0, 0), (top_pad, bottom_pad), (left_pad, right_pad)], 'constant')
-                yield block_data, i, j
+                block_backward_mask = self.backward_mask[i:i + actual_rows, j:j + actual_cols]
+                yield block_data, block_backward_mask, i, j
 
     def save_tif(self, filename, img_data):
         '''将（rows，cols， bands）的数据存为tif格式'''
