@@ -26,7 +26,7 @@ class Spe_Spa_Attenres_Encoder(nn.Module):
         x = self.res_block4(x)
         x = self.avg_pool(self.res_block5(x))
         x = x.view(x.shape[0], -1)
-        return self.linear(x) # 返回注意力数据
+        return self.linear(x)
 
 
     

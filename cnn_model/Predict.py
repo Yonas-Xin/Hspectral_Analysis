@@ -132,7 +132,7 @@ if __name__ == '__main__':
     idx = 0
     model.eval()
     with torch.no_grad():
-        for image_block,i,j in img.block_images(image_block=image_block_size, block_size=block_size, scale=1e-4):
+        for image_block,i,j in img.block_images(image_block=image_block_size, block_size=block_size):
             _, act_rows, act_cols = image_block.shape
             rows = act_rows-block_size+1
             cols = act_cols-block_size+1

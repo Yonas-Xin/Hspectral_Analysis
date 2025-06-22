@@ -66,7 +66,7 @@ class Cnn_model_frame:
     def load_parameter(self, model, optimizer, scheduler=None, ck_pth=None, load_from_ck=False): # 加载模型、优化器、调度器
         self.full_cpu() # 打印配置信息
         if ck_pth is not None:
-            checkpoint = torch.load(ck_pth, weights_only=True)
+            checkpoint = torch.load(ck_pth, weights_only=True, map_location=self.device)
             model.load_state_dict(checkpoint['model'])
             if load_from_ck:
                 self.train_epoch_min_loss = checkpoint.get('best_loss', 100)

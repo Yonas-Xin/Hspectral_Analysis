@@ -14,6 +14,8 @@ import spectral as spy
 from skimage.segmentation import slic
 from utils import block_generator
 from algorithms import *
+from skimage.feature import graycomatrix, graycoprops
+from algorithms import spectral_complexity_pca
 
 gdal.UseExceptions()
 class Hyperspectral_Image:
@@ -196,6 +198,72 @@ class Hyperspectral_Image:
         return dataset
 
     def superpixel_sampling(self, n_segments=1024, compactness=10, niters=1000, threshold=0, centered=False,
+                            samples=8000, embedding_nums=10, f='MNF', show_img=False, row_slice=None, col_slice=None, band_slice=None):
+        '''超像素分割-ppi采样'''
+        if self.slic_label is None:
+            # 如果没有进行超像素分割，则进行分割,同时这里面生成了pca增强影像
+            self.slic(n_segments=n_segments, compactness=compactness, n_components=embedding_nums, show_img=show_img)
+        labels = np.unique(self.slic_label) # 超像素的标签
+        labels = labels[labels > 0]  # 排除背景标签
+        out_labels = np.zeros_like(self.slic_label) # PPI提取结果，最后样本提取结果
+        if f=='MNF': # 如果是MNF增强，重新计算增强数据，覆盖原来的增强数据
+            self.image_enhance(f='MNF', n_components=embedding_nums, row_slice=row_slice, col_slice=col_slice, band_slice=band_slice)
+        enhanced_data = self.enhance_data # 增强数据
+
+        areas = [] # 面积参数
+        var_sums = [] # 光谱反差参数
+        for label in labels:
+            mask = (self.slic_label == label)
+            area = np.sum(mask) # 当前超像素区域的像素数量
+            areas.append(area)
+            datasets = enhanced_data[mask]
+
+            if datasets.size == 0:
+                var_sum = 0.0
+            else:
+                var_per_band = np.var(datasets, axis=0)  # 波段方差
+                var_sum = np.sum(var_per_band)  # 光谱方差总和
+            var_sums.append(var_sum)
+        areas = np.array(areas, dtype=float)
+        var_sums = np.array(var_sums, dtype=float)
+
+            # Min-Max 归一化函数（避免除以零）
+        eps = 1e-12
+        def min_max_norm(x):
+            if np.all(x == x[0]):
+                return np.zeros_like(x)
+            return (x - x.min()) / (x.max() - x.min() + eps)
+        
+        norm_var = min_max_norm(var_sums)
+        norm_area = min_max_norm(areas)
+        area_inv = 1.0 - norm_area  # 面积倒数特征
+
+        num_features = 2  # 包含 area_inv
+        scores = (norm_var + area_inv) / num_features # 0~1
+
+        # -------------------------------------------------------------------------
+        # 3. 根据得分确定采样数量 (scores * 20, 限制 [1,20])
+        # -------------------------------------------------------------------------
+        max_samples = 20
+        sample_counts = np.round(scores * max_samples).astype(int)
+        sample_counts[sample_counts < 1] = 1
+        sample_counts[sample_counts > max_samples] = max_samples
+
+        for idx, label in enumerate(labels):
+            mask = (self.slic_label==label)
+            datasets = enhanced_data[mask]
+            ppi_label = ppi_manual(datasets, niters=niters, threshold=threshold, centered=centered)
+
+            top_n = sample_counts[idx]
+            top_indices = np.argsort(ppi_label)[-top_n:]
+            ppi_label_selected = np.zeros_like(ppi_label)
+            ppi_label_selected[top_indices] = ppi_label[top_indices]  # 只保留top_n个端元
+            out_labels[mask] = ppi_label_selected
+        out_labels = (out_labels > 0).astype(np.int8)
+        print(f'采样数量：{np.sum(out_labels)}')
+        return out_labels
+
+    def old_superpixel_sampling(self, n_segments=1024, compactness=10, niters=1000, threshold=0, centered=False,
                             samples=8000, embedding_nums=10, f='MNF', row_slice=None, col_slice=None, band_slice=None):
         '''超像素分割-ppi采样'''
         if self.slic_label is None:

@@ -251,7 +251,6 @@ def crop_image_by_mask_block(image_file, out_filepath, sampling_position, image_
     num = 1
     pathlist = []
     add_labels = False
-    pbar = tqdm(total=int(rows/image_block)*int(cols/image_block))
     if np.max(sampling_position) > 1:  # 如果大于1说明裁剪的图像有标签
         print('有标签，将额外生成标签至txt文件')
         add_labels = True
@@ -300,6 +299,7 @@ def crop_image_by_mask_block(image_file, out_filepath, sampling_position, image_
             oringiny = geotransform[3]+i*geotransform[5]
             if np.all(block_sampling_mask==0):
                 continue
+            pbar = tqdm(total=int(np.sum(block_sampling_mask > 0))) # 进度条
             for row in range(row_block):
                 for col in range(col_block):
                     if block_sampling_mask[row, col] > 0:  # 如果该位置不是背景和噪声
@@ -314,9 +314,9 @@ def crop_image_by_mask_block(image_file, out_filepath, sampling_position, image_
                         else:
                             pathlist.append(path)
                         num+=1
-            pbar.update(1)
+                        pbar.update(1)
     dataset_path = os.path.join(out_filepath, '.datasets.txt')
     write_list_to_txt(pathlist, dataset_path)
     print('样本裁剪完成')
-# if __name__ == '__main__':
-#     point_value_merge(r'C:\Users\85002\Desktop\模型\样本标记3\samples_3.shp', [7,17])
+if __name__ == '__main__':
+    point_value_merge(r'D:\Data\Hgy\龚鑫涛试验数据\program_data\cluster\research1_gmm24_optimization2 - 副本.shp', [13,23])

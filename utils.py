@@ -94,3 +94,16 @@ def save_matrix_to_csv(matrix, filename, delimiter=','):
     # 使用 NumPy 保存为 CSV
     np.savetxt(filename, matrix, delimiter=delimiter, fmt='%s')
     print(f"data has been saved as csv: {filename}")
+
+def read_csv_to_matrix(filename, delimiter=','):
+    """
+    从 CSV 文件读取数据并转换为 NumPy 矩阵
+    
+    参数:
+        filename: 要读取的 CSV 文件名（包括路径）
+        delimiter: CSV 分隔符，默认为 ','
+    
+    返回:
+        NumPy 矩阵
+    """
+    return np.loadtxt(filename, delimiter=delimiter, dtype=np.float32)

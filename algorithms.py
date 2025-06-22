@@ -1,9 +1,10 @@
-"""从spectral库中重新封装算法，对一些部分算法做了调整"""
+"""从spectral库中重新封装算法，对部分算法做了调整"""
 import spectral as spy
 import numpy as np
-
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 def noise_from_diffs(X, mask=None, direction='lowerright'):
-    
+
     if direction.lower() not in ['lowerright', 'lowerleft', 'right', 'lower']:
         raise ValueError('Invalid `direction` value.')
     if mask is not None and mask.dtype != np.bool:
@@ -40,3 +41,21 @@ def signal_estimation(data):
     # 计算全局统计量
     # return 信号统计量
     return spy.calc_stats(data)
+
+
+def spectral_complexity_pca(data):
+    """
+    输入数据，计算复杂度指标（基于PCA解释方差比例）。
+    参数：
+    data: np.ndarray，形状为 (样本数, 波段数)
+    返回：
+    complexity: float，复杂度指标，定义为 1 - 第一主成分解释方差比例
+                越接近0表示数据差异小，越接近1表示复杂度高
+    """
+    scaler = StandardScaler()
+    data_std = scaler.fit_transform(data)
+    pca = PCA(n_components=1)
+    pca.fit(data_std)
+    explained_var = pca.explained_variance_ratio_[0]
+    complexity = 1 - explained_var
+    return complexity
