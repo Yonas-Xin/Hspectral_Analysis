@@ -19,14 +19,13 @@ VOC_COLORMAP = [[0, 0, 0], [128, 0, 0], [0, 128, 0], [128, 128, 0],
                 [64, 0, 0], [192, 0, 0], [64, 128, 0], [192, 128, 0],
                 [64, 0, 128], [192, 0, 128], [64, 128, 128], [192, 128, 128],
                 [0, 64, 0], [128, 64, 0], [0, 192, 0], [128, 192, 0],
-                [0, 64, 128]]
+                [0, 64, 128], [255, 255, 255]]
 def label_to_rgb(t, MAP=VOC_COLORMAP):
     '''根据颜色条将label映射到rgb图像'''
     H, W = t.shape
-    t=t.reshape(-1)
-    rgb=[MAP[i] for i in t ]
-    rgb=np.array(rgb,dtype=np.uint8)
-    rgb=rgb.reshape(H,W,3)
+    t = t.reshape(-1)
+    rgb = [ [255, 255, 255] if i == -1 else MAP[i] for i in t ] # -1指定映射为白色
+    rgb = np.array(rgb, dtype=np.uint8).reshape(H, W, 3)
     return rgb
 def search_files_in_directory(directory, extension):
     """

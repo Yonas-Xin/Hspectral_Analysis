@@ -453,14 +453,16 @@ class Hyperspectral_Image:
                 else:
                     yoff = i - left_top
                     top_pad = 0
-                if actual_cols == (self.cols - j):
+                if actual_cols == (self.cols - j): # 如果实际宽度已经接近了最右边界
+                    pad = actual_cols - image_block
+                    right_pad = right_bottom - pad if pad >=0 else right_bottom
                     actual_cols += left_top
-                    right_pad = right_bottom
                 else:
                     right_pad = 0
                 if actual_rows == (self.rows - i):
+                    pad = actual_rows - image_block
+                    bottom_pad = right_bottom - pad if pad >=0 else right_bottom
                     actual_rows += left_top
-                    bottom_pad = right_bottom
                 else:
                     bottom_pad = 0
                 # 读取当前块的所有波段数据（形状: [bands, actual_rows, actual_cols]）
@@ -468,8 +470,12 @@ class Hyperspectral_Image:
                 if block_data.dtype == np.int16:
                     block_data = block_data.astype(np.float32) * 1e-4
                 block_data = np.pad(block_data, [(0, 0), (top_pad, bottom_pad), (left_pad, right_pad)], 'constant')
-                block_backward_mask = self.backward_mask[i:i + actual_rows, j:j + actual_cols]
-                yield block_data, block_backward_mask, i, j
+                # 经过上面的计算位于左上区域和中间区域的块大小一律为（image_block + block_size - 1，image_block + block_size - 1）
+                # 比如如果参数是64， 17， 那么裁剪的块大小为（80, 80）
+                row_block = min(image_block, self.rows - i) # 记录真实窗口大小
+                col_block = min(image_block, self.cols - j)
+                block_sampling_mask = self.backward_mask[i:i + row_block, j:j + col_block]
+                yield block_data, block_sampling_mask, i, j
 
     def save_tif(self, filename, img_data):
         '''将（rows，cols， bands）的数据存为tif格式'''

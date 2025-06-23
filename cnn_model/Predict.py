@@ -10,7 +10,10 @@ import torch
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from cnn_model.Models.Models import Constrastive_learning_Model
+import matplotlib
 from datetime import datetime
+matplotlib.use('Agg')  # 使用非GUI后端，彻底绕过tkinter
+
 class IS_Generator(Dataset):
     '''构造用于1d+2d编码器的输入'''
     def __init__(self, whole_space, whole_spectral, block_size=25):
@@ -112,24 +115,16 @@ def save_img(img1, img2, outpath):
     plt.axis('off')
     plt.savefig(outpath, bbox_inches='tight', dpi=300)
     plt.close()
-
-def init_SSAR_model(out_embedding=24, out_classes=16, in_shape=None, model_pth=None, device=None):
-    model = Constrastive_learning_Model(out_embedding=out_embedding, out_classes=out_classes, in_shape=in_shape)
-    if model_pth is not None:
-        dic = torch.load(model_path, weights_only=True, map_location=device)['model']
-        model.load_state_dict(dic)
-    model.to(device)
-    return model
-
+    
 if __name__ == '__main__':
     input_data = r"D:\Data\Hgy\龚鑫涛试验数据\Image\research_GF5.dat"
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-    image_block_size=512
-    block_size=17
+    image_block_size = 64
+    block_size = 17
     batch = 256
     model_pth = '.models/contrastive_learning_model.pth'  # 模型路径
-    out_embedding=24
-    out_classes=16
+    out_embedding = 24
+    out_classes = 16
     data_shape = None
 
 
@@ -143,14 +138,13 @@ if __name__ == '__main__':
     output_dir = f'.\\cnn_model\\temp_dir\\{current_time}'
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
-    model_path  = '.models/'
     img = Hyperspectral_Image()
     img.init(input_data)
     predict_whole_map = np.empty((img.rows,img.cols), dtype=np.int16)
     idx = 0
     with torch.no_grad():
         for image_block, background_mask, i, j in img.block_images(image_block=image_block_size, block_size=block_size):
-            show_img(image_block)  # 展示滑动窗口
+            # show_img(image_block)  # 展示滑动窗口
             dataset = Block_Generator(image_block, block_size=block_size)
             dataloader = DataLoader(dataset, batch_size=batch, shuffle=False, pin_memory=True,num_workers=4,prefetch_factor=2)
             predict_data = torch.empty(len(dataset), dtype=torch.int16, device=device) # 预分配内存，用来储存预测结果
@@ -160,7 +154,7 @@ if __name__ == '__main__':
                 data_shape = dataset.image_shape
             model = Constrastive_learning_Model(out_embedding=out_embedding, out_classes=out_classes, in_shape=data_shape) # 在这里进行模型初始化
             if model_pth is not None:
-                dic = torch.load(model_path, weights_only=True, map_location=device)['model']
+                dic = torch.load(model_pth, weights_only=True, map_location=device)['model']
                 model.load_state_dict(dic)
             model.to(device)
             model.eval()
@@ -171,7 +165,7 @@ if __name__ == '__main__':
                 data = data.unsqueeze(1).to(device)
                 outputs = model(data)
                 _, predicted = torch.max(outputs, 1)
-                predict_map[idx:idx + batch, ] = predicted
+                predict_data[idx:idx + batch, ] = predicted
                 idx += batch
             predict_map = np.zeros((rows, cols), dtype=np.int16) - 1 # 初始化一个空的预测矩阵，-1代表背景值
             predict_map[background_mask] = predict_data.cpu().numpy() if predict_data.device.type == 'cuda' else predict_data.numpy() # 将预测结果填入对应位置
