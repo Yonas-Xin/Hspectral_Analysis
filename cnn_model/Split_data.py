@@ -49,9 +49,8 @@ def split_dataset_to_train_and_eval(dataset:list, ratio):
     return train_data_lists,eval_data_lists
 
 if __name__ == '__main__':
-    print('111')
-    # datasets = read_txt_to_list(r'D:\Data\Hgy\research_train_samples3\.datasets.txt')
+    datasets = read_txt_to_list(r'D:\Data\Hgy\research_train_samples3\.datasets.txt')
 
-    # train_data_lists, eval_data_lists = split_dataset_to_train_and_eval(datasets, 0.8)
-    # write_list_to_txt(train_data_lists, r'D:\Data\Hgy\research_train_samples3\Atrain_datasets.txt')
-    # write_list_to_txt(eval_data_lists, r'D:\Data\Hgy\research_train_samples3\Aeval_datasets.txt')
+    train_data_lists, eval_data_lists = split_dataset_to_train_and_eval(datasets, 0.8)
+    write_list_to_txt(train_data_lists, r'D:\Data\Hgy\research_train_samples3\Atrain_datasets.txt')
+    write_list_to_txt(eval_data_lists, r'D:\Data\Hgy\research_train_samples3\Aeval_datasets.txt')

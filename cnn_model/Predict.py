@@ -12,6 +12,8 @@ import matplotlib.pyplot as plt
 from cnn_model.Models.Models import Constrastive_learning_Model
 import matplotlib
 from datetime import datetime
+import signal
+from multiprocessing import cpu_count
 matplotlib.use('Agg')  # 使用非GUI后端，彻底绕过tkinter
 
 class IS_Generator(Dataset):
@@ -96,13 +98,6 @@ class Block_Generator(Dataset):
     def get_samples(self,row,col):
         block = self.data[:,row:row + self.block_size, col:col + self.block_size]
         return block
-    
-def show_img(data:torch.Tensor):
-    if isinstance(data, torch.Tensor):
-        data = data.numpy()
-    image = data[(29,19,9),:,:].transpose(1,2,0)
-    plt.imshow(image)
-    plt.show()
 
 def save_img(img1, img2, outpath):
     plt.figure(figsize=(12,6))
@@ -125,8 +120,22 @@ if __name__ == '__main__':
     model_pth = '.models/contrastive_learning_model.pth'  # 模型路径
     out_embedding = 24
     out_classes = 16
-    data_shape = None
+    output_path = './out.csv'
 
+
+    dataloader_num_workers = cpu_count() // 4 # 根据cpu核心数自动决定num_workers数量
+    data_shape = None
+    model = None
+    def interrupt_handler(signum, frame):
+        print("\nInterrupt signal received.")
+        clean_up()
+        exit(1)
+    def clean_up():
+        if len(os.listdir(output_dir)) == 0:
+            print(f'the temp_dir {output_dir} has been deleted!')
+            os.rmdir(output_dir)
+    signal.signal(signal.SIGINT, interrupt_handler)  # 注册中断信号处理函数
+    signal.signal(signal.SIGTERM, interrupt_handler)  # 注册终止信号处理函数
 
     if block_size % 2 == 0:
         left_top = int(block_size / 2 - 1)
@@ -142,38 +151,44 @@ if __name__ == '__main__':
     img.init(input_data)
     predict_whole_map = np.empty((img.rows,img.cols), dtype=np.int16)
     idx = 0
-    with torch.no_grad():
-        for image_block, background_mask, i, j in img.block_images(image_block=image_block_size, block_size=block_size):
-            # show_img(image_block)  # 展示滑动窗口
-            dataset = Block_Generator(image_block, block_size=block_size)
-            dataloader = DataLoader(dataset, batch_size=batch, shuffle=False, pin_memory=True,num_workers=4,prefetch_factor=2)
-            predict_data = torch.empty(len(dataset), dtype=torch.int16, device=device) # 预分配内存，用来储存预测结果
-            rows, cols = dataset.rows, dataset.cols
+    try:
+        with torch.no_grad():
+            for image_block, background_mask, i, j in img.block_images(image_block=image_block_size, block_size=block_size):
+                dataset = Block_Generator(image_block, block_size=block_size, backward_mask=background_mask)
+                predict_data = torch.empty(len(dataset), dtype=torch.int16, device=device) # 预分配内存，用来储存预测结果
+                rows, cols = dataset.rows, dataset.cols
 
-            if data_shape is None:
-                data_shape = dataset.image_shape
-            model = Constrastive_learning_Model(out_embedding=out_embedding, out_classes=out_classes, in_shape=data_shape) # 在这里进行模型初始化
-            if model_pth is not None:
-                dic = torch.load(model_pth, weights_only=True, map_location=device)['model']
-                model.load_state_dict(dic)
-            model.to(device)
-            model.eval()
+                if data_shape is None:
+                    data_shape = dataset.image_shape
 
-            for data in tqdm(dataloader, total=len(dataloader), desc=f'Block{i}_{j}'):
-                batch = data.shape[0]
-                # show_img(data[0,:,:,:] .cpu())# 展示滑动窗口
-                data = data.unsqueeze(1).to(device)
-                outputs = model(data)
-                _, predicted = torch.max(outputs, 1)
-                predict_data[idx:idx + batch, ] = predicted
-                idx += batch
-            predict_map = np.zeros((rows, cols), dtype=np.int16) - 1 # 初始化一个空的预测矩阵，-1代表背景值
-            predict_map[background_mask] = predict_data.cpu().numpy() if predict_data.device.type == 'cuda' else predict_data.numpy() # 将预测结果填入对应位置
-            predict_whole_map[i:i+rows, j:j+cols] = predict_map # 将预测结果填入整体预测矩阵
+                if model is None: # 进行模型的初始化和参数读取
+                    model = Constrastive_learning_Model(out_embedding=out_embedding, out_classes=out_classes, in_shape=data_shape) # 在这里进行模型初始化
+                    if model_pth is not None:
+                        dic = torch.load(model_pth, weights_only=True, map_location=device)['model']
+                        model.load_state_dict(dic)
+                model.to(device)
+                model.eval()
 
-            # 下面保存预测过程中的图像
-            map = utils.label_to_rgb(predict_map)
-            image = image_block[(29,19,9),left_top:left_top+rows,left_top:left_top+cols].transpose(1,2,0)
-            output_path = os.path.join(output_dir, f"block_{i}_{j}.png")
-            save_img(image, map, output_path)
-    utils.save_matrix_to_csv(predict_whole_map, 'predict_map25_25.npz') # 保存为csv文件
+                predict_map = np.zeros((rows, cols), dtype=np.int16) - 1 # 初始化一个空的预测矩阵，-1代表背景值
+                if np.any(background_mask == True):
+                    idx = 0
+                    dataloader = DataLoader(dataset, batch_size=batch, shuffle=False, pin_memory=True,num_workers=4,prefetch_factor=2)
+                    for data in tqdm(dataloader, total=len(dataloader), desc=f'Block{i}_{j}'):
+                        batch = data.shape[0]
+                        data = data.unsqueeze(1).to(device)
+                        outputs = model(data)
+                        _, predicted = torch.max(outputs, 1)
+                        predict_data[idx:idx + batch, ] = predicted
+                        idx += batch
+                predict_map[background_mask] = predict_data.cpu().numpy() if predict_data.device.type == 'cuda' else predict_data.numpy() # 将预测结果填入对应位置
+                predict_whole_map[i:i+rows, j:j+cols] = predict_map # 将预测结果填入整体预测矩阵
+
+                # 下面保存预测过程中的图像
+                map = utils.label_to_rgb(predict_map)
+                image = image_block[(29,19,9),left_top:left_top+rows,left_top:left_top+cols].transpose(1,2,0)
+                output_path = os.path.join(output_dir, f"block_{i}_{j}.png")
+                save_img(image, map, output_path)
+    except Exception as e:
+        clean_up()
+        raise (e)
+    utils.save_matrix_to_csv(predict_whole_map, output_path) # 保存为csv文件

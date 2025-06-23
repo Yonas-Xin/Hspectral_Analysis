@@ -377,15 +377,21 @@ class Hyperspectral_Image:
                 else:
                     yoff=i-left_top
                     top_pad=0
-                if actual_cols==(self.cols - j):
+                if actual_cols == (self.cols - j): # 如果实际宽度已经接近了最右边界
+                    pad = actual_cols - image_block
+                    right_pad = right_bottom - pad if pad >=0 else right_bottom
                     actual_cols += left_top
-                    right_pad = right_bottom
-                else:right_pad = 0
-                if actual_rows==(self.rows - i):
+                else:
+                    right_pad = 0
+                if actual_rows == (self.rows - i):
+                    pad = actual_rows - image_block
+                    bottom_pad = right_bottom - pad if pad >=0 else right_bottom
                     actual_rows += left_top
-                    bottom_pad = right_bottom
-                else:bottom_pad = 0
-                    # 读取当前块的所有波段数据（形状: [bands, actual_rows, actual_cols]）
+                else:
+                    bottom_pad = 0
+
+
+                # 读取当前块的所有波段数据（形状: [bands, actual_rows, actual_cols]）
                 block_data = self.dataset.ReadAsArray(xoff=xoff, yoff=yoff, xsize=actual_cols, ysize=actual_rows)
                 if block_data.dtype == np.int16:
                     block_data = block_data.astype(np.float32) * 1e-4
@@ -394,9 +400,6 @@ class Hyperspectral_Image:
                 row_block = min(image_block, self.rows - i) # 记录真实窗口大小
                 col_block = min(image_block, self.cols - j)
                 block_sampling_mask = position_mask[i:i + row_block, j:j + col_block]
-                # block_sampling_mask = np.pad(block_sampling_mask,[(left_top, right_bottom), (left_top, right_bottom)], 'constant')
-                # show_img(block_data)
-                _, block_rows, block_cols = block_data.shape
                 oringinx = geotransform[0]+j*geotransform[1]
                 oringiny = geotransform[3]+i*geotransform[5]
                 if np.all(block_sampling_mask==0):
