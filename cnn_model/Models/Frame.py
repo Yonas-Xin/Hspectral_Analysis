@@ -9,10 +9,11 @@ import torch
 import signal
 import shutil
 class Cnn_model_frame:
-    def __init__(self, model_name, min_lr=1e-7, epochs=300, warmup_epochs=30, device=None, if_full_cpu=True):
+    def __init__(self, model_name, min_lr=1e-7, epochs=300, warmup_epochs=30, device=None, if_full_cpu=True, gradually_unfreeze=True):
         self.loss_func = nn.CrossEntropyLoss()
         self.min_lr = min_lr
-        self.epochs=epochs
+        self.epochs = epochs
+        self.GRAGUALLY_UNFRREZE = gradually_unfreeze
         if warmup_epochs is not None:
             self.warmup_epochs = warmup_epochs
         else: self.warmup_epochs = 0
@@ -123,6 +124,12 @@ class Cnn_model_frame:
                 running_loss = 0.0
                 correct = 0
                 total_samples = 0
+                if self.GRAGUALLY_UNFRREZE: # 添加逐级解冻策略
+                    try:
+                        model.gradually_unfreeze_encoder_modules(epoch)
+                    except Exception as e:
+                        print(f'The parameter unfreezing was unsuccessful:{e}')
+                        pass
                 for data, label in tqdm(train_dataloader, total=len(train_dataloader), desc="Training:", leave=True):
                     total_samples+=label.shape[0]
                     data, label = data.to(self.device).unsqueeze(1), label.to(self.device)

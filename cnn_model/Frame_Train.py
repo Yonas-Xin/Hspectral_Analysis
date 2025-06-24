@@ -27,9 +27,10 @@ if __name__ == '__main__':
     ck_pth = None # 用于断点学习
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # 显卡设置
     out_classes = 8 # 分类数
+    GRAGUALLY_UNFRREZE = True
+
+
     out_embeddings = 24 # 模型初始化必要，后面打算把这个参数设置为固定值
-
-
     step_size = epochs // (math.log10(init_lr // min_lr) + 1) # 自动计算学习率调度器的步长
     dataloader_num_workers = cpu_count() // 4 # 根据cpu核心数自动决定num_workers数量
     print(f'Using num_workers: {dataloader_num_workers}')
@@ -55,7 +56,8 @@ if __name__ == '__main__':
                             min_lr=min_lr,
                             warmup_epochs=warmup_epochs,
                             device=device, 
-                            if_full_cpu=if_full_cpu)
+                            if_full_cpu=if_full_cpu,
+                            gradually_unfreeze=GRAGUALLY_UNFRREZE)
     
     frame.train(model=model, 
                 optimizer=optimizer, 

@@ -27,6 +27,15 @@ class Spe_Spa_Attenres_Encoder(nn.Module):
         x = self.avg_pool(self.res_block5(x))
         x = x.view(x.shape[0], -1)
         return self.linear(x)
+    
+    @property # 返回解冻计划
+    def get_unfreeze_plan(self):
+        UNFREEZE_PLAN = {80:'res_block3',
+                         60:'res_block4',
+                         40:'res_block5',
+                         20:'linear'} # epoch为20时解冻线性层
+        return UNFREEZE_PLAN
+
 
 
     
