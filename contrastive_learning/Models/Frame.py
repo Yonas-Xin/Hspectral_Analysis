@@ -117,7 +117,7 @@ class Contrastive_learning_frame:
             'current_lr': optimizer.param_groups[0]['lr']
         }
         torch.save(state, self.model_path)
-        print(f"Checkpoint saved at epoch {epoch + 1}")
+        print(f"============Checkpoint saved at epoch {epoch + 1}============")
 
     def train(self, model, optimizer, dataloader, scheduler=None, ck_pth=None, clean_noise_samples=False, load_from_ck=False, clean_th=0.99):
         self.log_writer = open(self.log_path, 'w')
@@ -127,7 +127,8 @@ class Contrastive_learning_frame:
         model.to(self.device)
         self.load_parameter(model=model, optimizer=optimizer, scheduler=scheduler, ck_pth=ck_pth, load_from_ck=load_from_ck) # 初始化模型
         model.train() # 开启训练模式，自训练没有测试模式，所以这个可以在训练之前设置
-
+        
+        model_save_epoch = 0
         try:
             for epoch in range(self.start_epoch, self.epochs):
                 running_loss = 0.0
@@ -154,6 +155,7 @@ class Contrastive_learning_frame:
                     pass
                 else:
                     self.train_epoch_min_loss = avg_loss
+                    model_save_epoch = epoch
                     self.save_model(model=model, optimizer=optimizer, scheduler=scheduler, epoch=epoch, avg_loss=avg_loss)
                 if (epoch + 1) < self.warmup_epochs or current_lr <= self.min_lr:
                     pass
@@ -167,9 +169,12 @@ class Contrastive_learning_frame:
                 raise  # 重新抛出异常以便外部处理
         
         finally:
+            result = f'Model saved at Epoch{model_save_epoch}. \nThe best training_loss:{self.train_epoch_min_loss}'
+            self.log_writer.write(result + '\n')
             self.log_writer.close()
             self.writer.close()
             print("Training completed. Program exited.")
+            print(result)
             os._exit(0) # 退出主程序
     
 class Contrasive_learning_predict_frame:

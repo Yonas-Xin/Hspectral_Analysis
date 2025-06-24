@@ -150,7 +150,6 @@ if __name__ == '__main__':
     img = Hyperspectral_Image()
     img.init(input_data)
     predict_whole_map = np.empty((img.rows,img.cols), dtype=np.int16)
-    idx = 0
     try:
         with torch.no_grad():
             for image_block, background_mask, i, j in img.block_images(image_block=image_block_size, block_size=block_size):
@@ -172,7 +171,7 @@ if __name__ == '__main__':
                 predict_map = np.zeros((rows, cols), dtype=np.int16) - 1 # 初始化一个空的预测矩阵，-1代表背景值
                 if np.any(background_mask == True):
                     idx = 0
-                    dataloader = DataLoader(dataset, batch_size=batch, shuffle=False, pin_memory=True,num_workers=4,prefetch_factor=2)
+                    dataloader = DataLoader(dataset, batch_size=batch, shuffle=False, pin_memory=True,num_workers=dataloader_num_workers,prefetch_factor=2)
                     for data in tqdm(dataloader, total=len(dataloader), desc=f'Block{i}_{j}'):
                         batch = data.shape[0]
                         data = data.unsqueeze(1).to(device)

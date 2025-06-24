@@ -108,7 +108,7 @@ class Cnn_model_frame:
             'current_lr': optimizer.param_groups[0]['lr']
         }
         torch.save(state, self.model_path)
-        print(f"Checkpoint saved at epoch {epoch + 1}")
+        print(f"============Checkpoint saved at epoch {epoch + 1}============")
 
     def train(self, model, optimizer, train_dataloader, eval_dataloader=None, scheduler=None, ck_pth=None, load_from_ck=False):
         self.log_writer = open(self.log_path, 'w')
@@ -118,6 +118,9 @@ class Cnn_model_frame:
         model.to(self.device)
         self.load_parameter(model=model, optimizer=optimizer, scheduler=scheduler, ck_pth=ck_pth, load_from_ck=load_from_ck) # 初始化模型
 
+        best_train_accuracy = 0
+        best_test_accuracy = 0
+        model_save_epoch = 0
         try:
             for epoch in range(self.start_epoch, self.epochs):
                 model.train()  # 开启训练模式，自训练没有测试模式，所以这个可以在训练之前设置
@@ -173,6 +176,9 @@ class Cnn_model_frame:
                         print(result)
                 if train_avg_loss <= self.train_epoch_min_loss:
                     self.train_epoch_min_loss = train_avg_loss
+                    best_train_accuracy = train_accuracy
+                    best_test_accuracy = test_accuracy
+                    model_save_epoch = epoch
                     self.save_model(model=model, optimizer=optimizer, scheduler=scheduler, epoch=epoch, avg_loss=train_avg_loss)
                 if (epoch + 1) < self.warmup_epochs or current_lr <= self.min_lr:
                     pass
@@ -184,7 +190,10 @@ class Cnn_model_frame:
             print(f"Training interrupted due to: {str(e)}")
             raise
         finally:
+            result = f'Model saved at Epoch{model_save_epoch}. \nThe best training_acc:{best_train_accuracy}.\nThe best testing_acc:{best_test_accuracy}'
+            self.log_writer.write(result + '\n')
             self.log_writer.close() # 再次确保日志文件被正确关闭
             self.writer.close()
-            print("Training completed. Program exited.")
+            print(f"Training completed. Program exited.")
+            print(result)
             os._exit(0) # 退出主程序
