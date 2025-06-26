@@ -4,7 +4,7 @@ import torch
 import math
 class Spe_Spa_Attenres_Encoder(nn.Module):
     '''5个残差块和一个卷积块'''
-    def __init__(self,out_embedding=24, in_shape=(138,17,17)):
+    def __init__(self, out_embedding=24, in_shape=(138,17,17)):
         super().__init__()
         bands, H, W = in_shape
         self.spectral_attention = ECA_SpectralAttention_3d(bands, 2,1)# 光谱注意力
@@ -36,11 +36,56 @@ class Spe_Spa_Attenres_Encoder(nn.Module):
                          20:'linear'} # epoch为20时解冻线性层
         return UNFREEZE_PLAN
 
-
-
+class Shallow_3DCNN_Encoder(nn.Module):
+    def __init__(self, in_shape=(138,17,17)):
+        super().__init__()
+        bands, H, W = in_shape
+        self.conv1 = Common_3d(1, 32, kernel_size=(3,3,3), padding=(1,1,1))
+        self.pool1 = nn.MaxPool3d(kernel_size=2, stride=2)
+        self.conv2_1 = Common_3d(32, 64, kernel_size=(3,3,3), padding=(1,1,1))
+        self.conv2_2 = Common_3d(64, 64, kernel_size=(3,3,3), padding=(1,1,1))
+        self.pool2 = nn.MaxPool3d(kernel_size=2, stride=2)
+        self.conv3 = Common_3d(64, 128, kernel_size=(3,3,3), padding=(1,1,1))
+        self.conv4 = Common_3d(128, 128, kernel_size=(3,3,3), padding=(1,1,1))
+        self.pool3 = nn.AvgPool3d(2)
+        in_feature = int(bands/8)*int(H/8)*int(W/8)*128
+        self.linear = nn.Linear(in_feature, out_features=128)
     
+    def forward(self, x):
+        x = self.pool1(self.conv1(x))
+        x = self.pool2(self.conv2_2(self.conv2_1(x)))
+        x = self.pool3(self.conv4(self.conv3(x)))
+        x = x.view(x.size(0), -1)
+        return self.linear(x)
 
-    
+class Shallow_1DCNN_Encoder(nn.Module):
+    def __init__(self, in_shape=(138,)):
+        super().__init__()
+        channels = 1
+        length = in_shape[0]
+
+        self.conv1 = Common_1d(channels, 32, kernel_size=3, padding=1)
+        self.pool1 = nn.MaxPool1d(kernel_size=2, stride=2)
+
+        self.conv2_1 = Common_1d(32, 64, kernel_size=3, padding=1)
+        self.conv2_2 = Common_1d(64, 64, kernel_size=3, padding=1)
+        self.pool2 = nn.MaxPool1d(kernel_size=2, stride=2)
+
+        self.conv3 = Common_1d(64, 128, kernel_size=3, padding=1)
+        self.conv4 = Common_1d(128, 128, kernel_size=3, padding=1)
+        self.pool3 = nn.AvgPool1d(2)
+
+        in_feature = int(length/8) * 128
+        self.linear = nn.Linear(in_feature, 128)
+
+    def forward(self, x):
+        # 输入尺寸 [B, 1, L]
+        x = self.pool1(self.conv1(x))
+        x = self.pool2(self.conv2_2(self.conv2_1(x)))
+        x = self.conv4(self.conv3(x))
+        x = self.pool3(x)         # [B, 128, 1]
+        x = x.view(x.size(0), -1) # [B, 128]
+        return self.linear(x) 
 # =================================================================================================
 # 编码器组件
 # =================================================================================================
@@ -120,3 +165,47 @@ class ECA_SpectralAttention_3d(nn.Module):
         # 恢复形状为 (batch,1,1,1,bands)
         attn_weights = attn_weights.view(batch, 1, bands, 1, 1)
         return x * attn_weights
+    
+# ============2D resnet组件============
+class Bottleneck(nn.Module):
+    expansion = 4  # 通道扩张倍率
+
+    def __init__(self, in_channels, mid_channels, stride=1, downsample=None):
+        super().__init__()
+        self.conv1 = nn.Conv2d(in_channels, mid_channels, kernel_size=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(mid_channels)
+
+        self.conv2 = nn.Conv2d(mid_channels, mid_channels, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(mid_channels)
+
+        self.conv3 = nn.Conv2d(mid_channels, mid_channels * self.expansion, kernel_size=1, bias=False)
+        self.bn3 = nn.BatchNorm2d(mid_channels * self.expansion)
+
+        self.relu = nn.ReLU(inplace=True)
+        self.downsample = downsample  # identity shortcut是否需要变换
+        self.stride = stride
+
+    def forward(self, x):
+        identity = x
+
+        out = self.relu(self.bn1(self.conv1(x)))
+        out = self.relu(self.bn2(self.conv2(out)))
+        out = self.bn3(self.conv3(out))
+
+        if self.downsample is not None:
+            identity = self.downsample(x)
+
+        out += identity
+        return self.relu(out)
+
+# ============1D CNN组件============
+class Common_1d(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size=3, padding=1, stride=1):
+        super().__init__()
+        '''先batch，后激活'''
+        self.conv = nn.Conv1d(in_channels, out_channels, kernel_size=kernel_size, padding=padding, stride=stride)
+        self.batch_norm = nn.BatchNorm1d(out_channels)
+        self.relu = nn.ReLU(inplace=True)
+
+    def forward(self, x):
+        return self.relu(self.batch_norm(self.conv(x)))

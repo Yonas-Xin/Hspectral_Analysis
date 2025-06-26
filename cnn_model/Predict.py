@@ -75,8 +75,8 @@ class Block_Generator(Dataset):
         image = self.__getitem__(0)
         self.image_shape = image.shape
         if backward_mask is not None:
-            if self.backward_mask.dtype != np.bool:
-                self.backward_mask = self.backward_mask.astype(np.bool)
+            if backward_mask.dtype != np.bool:
+                backward_mask = backward_mask.astype(np.bool)
             self.idx = self.idx.reshape(rows, cols)
             self.idx = self.idx[background_mask]
 
@@ -97,6 +97,8 @@ class Block_Generator(Dataset):
 
     def get_samples(self,row,col):
         block = self.data[:,row:row + self.block_size, col:col + self.block_size]
+        if self.block_size == 1: # 如果是单像素，数据适配1D CNN的输入
+            block = block.squeeze()
         return block
 
 def save_img(img1, img2, outpath):
@@ -120,7 +122,7 @@ if __name__ == '__main__':
     model_pth = '.models/contrastive_learning_model.pth'  # 模型路径
     out_embedding = 24
     out_classes = 16
-    output_path = './out.csv'
+    csv_output_path = './out.csv'
 
 
     dataloader_num_workers = cpu_count() // 4 # 根据cpu核心数自动决定num_workers数量
@@ -190,4 +192,4 @@ if __name__ == '__main__':
     except Exception as e:
         clean_up()
         raise (e)
-    utils.save_matrix_to_csv(predict_whole_map, output_path) # 保存为csv文件
+    utils.save_matrix_to_csv(predict_whole_map, csv_output_path) # 保存为csv文件

@@ -1,6 +1,7 @@
 import numpy as np
 import os
 import torch
+import matplotlib.colors as mcolors
 def block_generator(data, block_size=256):
     '''迭代器，输入一个影像，返回分块的位置掩膜'''
     if data.ndim == 3:
@@ -14,19 +15,28 @@ def block_generator(data, block_size=256):
             position_mask = np.zeros((rows, cols))
             position_mask[i:i+actual_rows, j:j+actual_cols] = 1
             yield position_mask
-VOC_COLORMAP = [[0, 0, 0], [128, 0, 0], [0, 128, 0], [128, 128, 0],
-                [0, 0, 128], [128, 0, 128], [0, 128, 128], [128, 128, 128],
-                [64, 0, 0], [192, 0, 0], [64, 128, 0], [192, 128, 0],
-                [64, 0, 128], [192, 0, 128], [64, 128, 128], [192, 128, 128],
-                [0, 64, 0], [128, 64, 0], [0, 192, 0], [128, 192, 0],
-                [0, 64, 128], [255, 255, 255]]
-def label_to_rgb(t, MAP=VOC_COLORMAP):
+ACADEMIC_COLOR = ['#d5e5c9', '#d4dee9', '#d9c2df', '#e2795a', '#eac56c', '#299d90', '#895c56', '#1bb5b9',
+                  '#d68e04', '#eea78b', '#d5c1d6', '#9566a8', '#a4d2a1', '#e98d49', '#639dfc', '#93a906',]
+def label_to_rgb(t, MAP=ACADEMIC_COLOR):
     '''根据颜色条将label映射到rgb图像'''
+    MAP = batch_hex_to_rgb(MAP) # 将HEX值转化为rgb值
+    print(MAP)
+    if not isinstance(t, (np.int8, np.int16, np.int32, np.int64)):
+        t = t.astype(np.int16)
     H, W = t.shape
     t = t.reshape(-1)
     rgb = [ [255, 255, 255] if i == -1 else MAP[i] for i in t ] # -1指定映射为白色
     rgb = np.array(rgb, dtype=np.uint8).reshape(H, W, 3)
     return rgb
+
+def hex_to_rgb(value):
+    rgb = mcolors.hex2color(value)
+    rgb_255 = [int(round(x * 255)) for x in rgb]
+    return rgb_255
+
+def batch_hex_to_rgb(value_list : list):
+    return [hex_to_rgb(i) for i in value_list]
+
 def search_files_in_directory(directory, extension):
     """
     搜索指定文件夹中所有指定后缀名的文件，并返回文件路径列表,只适用于不需要标签训练的模型，因为返回的列表顺序可能和

@@ -41,7 +41,8 @@ class Cnn_model_frame:
 
         #配置训练信息
         self.if_full_cpu = if_full_cpu
-        self.train_epoch_min_loss = 100
+        self.test_epoch_min_loss = 100
+        self.test_epoch_max_acc = -1
         self.start_epoch = 0
 
         signal.signal(signal.SIGINT, self.interrupt_handler)  # 注册中断信号处理函数
@@ -70,7 +71,8 @@ class Cnn_model_frame:
             checkpoint = torch.load(ck_pth, weights_only=True, map_location=self.device)
             model.load_state_dict(checkpoint['model'])
             if load_from_ck:
-                self.train_epoch_min_loss = checkpoint.get('best_loss', 100)
+                self.test_epoch_min_loss = checkpoint.get('best_loss', 100)
+                self.test_epoch_max_acc = checkpoint.get('best_acc', -1)
                 try:
                     optimizer.load_state_dict(checkpoint['optimizer']) # 恢复优化器
                     print('The optimizer state have been loaded!')
@@ -98,12 +100,13 @@ class Cnn_model_frame:
         print('Cuda device count: ', torch.cuda.device_count())  # 显卡数
         print('Current device: ', torch.cuda.current_device())  # 当前计算的显卡id
 
-    def save_model(self, model, optimizer, scheduler, epoch=None, avg_loss=None):
+    def save_model(self, model, optimizer, scheduler, epoch=None, avg_loss=None, avg_acc=None):
         state = {
             'model': model.state_dict(),
             'optimizer': optimizer.state_dict(),
             'epoch': epoch,
             'best_loss': avg_loss,
+            'best_acc': avg_acc,
             'scheduler': scheduler.state_dict() if scheduler else None,
             'current_lr': optimizer.param_groups[0]['lr']
         }
@@ -135,7 +138,7 @@ class Cnn_model_frame:
                         pass
                 for data, label in tqdm(train_dataloader, total=len(train_dataloader), desc="Training:", leave=True):
                     total_samples+=label.shape[0]
-                    data, label = data.to(self.device).unsqueeze(1), label.to(self.device)
+                    data, label = data.to(self.device), label.to(self.device)
                     optimizer.zero_grad()
                     output = model(data)
                     loss = self.loss_func(output, label)
@@ -174,12 +177,23 @@ class Cnn_model_frame:
                         self.writer.add_scalars('Loss', {'Test': test_avg_loss}, epoch)
                         self.writer.add_scalars('Accuracy', {'Test': test_accuracy}, epoch)
                         print(result)
-                if train_avg_loss <= self.train_epoch_min_loss:
-                    self.train_epoch_min_loss = train_avg_loss
+                if test_accuracy > self.test_epoch_max_acc: # 使用测试集的预测准确率进行模型保存
+                    self.test_epoch_min_loss = test_avg_loss
+                    self.test_epoch_max_acc = test_accuracy
                     best_train_accuracy = train_accuracy
                     best_test_accuracy = test_accuracy
                     model_save_epoch = epoch
-                    self.save_model(model=model, optimizer=optimizer, scheduler=scheduler, epoch=epoch, avg_loss=train_avg_loss)
+                    self.save_model(model=model, optimizer=optimizer, scheduler=scheduler, epoch=epoch, avg_loss=test_avg_loss, avg_acc=test_accuracy)
+                elif test_accuracy == self.test_epoch_max_acc:
+                    if test_avg_loss < self.test_epoch_min_loss:
+                        self.test_epoch_min_loss = test_avg_loss
+                        self.test_epoch_max_acc = test_accuracy
+                        best_train_accuracy = train_accuracy
+                        best_test_accuracy = test_accuracy
+                        model_save_epoch = epoch
+                        self.save_model(model=model, optimizer=optimizer, scheduler=scheduler, epoch=epoch, avg_loss=test_avg_loss, avg_acc=test_accuracy)
+                else: pass
+
                 if (epoch + 1) < self.warmup_epochs or current_lr <= self.min_lr:
                     pass
                 else:

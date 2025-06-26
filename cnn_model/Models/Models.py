@@ -9,6 +9,10 @@ class Constrastive_learning_Model(nn.Module):
         self.encoder = Spe_Spa_Attenres_Encoder(out_embedding=out_embedding, in_shape=in_shape) # 3d卷积残差编码器
         self.decoder = deep_classfier(out_embedding, out_classes, mid_channels=4096)
     def forward(self, x):
+        if x.dim() == 4:
+            x = x.unsqueeze(1)  # 增加一个维度到 [B, 1, C, H, W]
+        elif x.dim() != 5:
+            raise ValueError(f"Expected input dimension 4 or 5, but got {x.dim()}")
         x = self.encoder(x)
         x = self.decoder(x)
         return x
@@ -36,3 +40,35 @@ class Constrastive_learning_Model(nn.Module):
                 for param in module.parameters():
                     param.requires_grad = True
                 print(f"[Epoch {epoch}] 解冻 encoder 模块: {name}")
+
+class Shallow_3DCNN(nn.Module):
+    '''浅层3D CNN模型'''
+    def __init__(self, out_embedding=None, out_classes=8, in_shape=(138,17,17)):
+        super().__init__()
+        self.encoder = Shallow_3DCNN_Encoder(in_shape=in_shape) # 3d卷积残差编码器
+        self.decoder = nn.Linear(128, out_features=out_classes)
+    
+    def forward(self, x):
+        if x.dim() == 4:
+            x = x.unsqueeze(1)  # 增加一个维度到 [B, 1, C, H, W]
+        elif x.dim() != 5:
+            raise ValueError(f"Expected input dimension 4 or 5, but got {x.dim()}")
+        x = self.encoder(x)
+        x = self.decoder(x)
+        return x
+
+class Shallow_1DCNN(nn.Module):
+    '''浅层1D CNN模型'''
+    def __init__(self, out_embedding=None, out_classes=8, in_shape=(138,)):
+        super().__init__()
+        self.encoder = Shallow_1DCNN_Encoder(in_shape=in_shape)  # 1D CNN 编码器
+        self.decoder = deep_classfier(128, out_classes, mid_channels=4096)
+
+    def forward(self, x):
+        if x.dim() == 2:
+            x = x.unsqueeze(1)  # 增加一个维度到 [B, 1, C, H, W]
+        elif x.dim() != 3:
+            raise ValueError(f"Expected input dimension 2 or 3, but got {x.dim()}")
+        x = self.encoder(x)
+        x = self.decoder(x)
+        return x

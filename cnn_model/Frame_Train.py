@@ -3,8 +3,8 @@ base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(base_path)
 import torch
 import torch.optim as optim
-from cnn_model.Models.Models import Constrastive_learning_Model
-from cnn_model.Models.Data import Moni_leaning_dataset,MoniHDF5_leaning_dataset
+from cnn_model.Models.Models import Constrastive_learning_Model, Shallow_3DCNN, Shallow_1DCNN
+from cnn_model.Models.Data import Dataset_3D, Dataset_1D
 from torch.optim.lr_scheduler import StepLR,ExponentialLR,ReduceLROnPlateau
 from cnn_model.Models.Frame import Cnn_model_frame
 from utils import read_txt_to_list, rewrite_paths_info
@@ -16,17 +16,17 @@ if __name__ == '__main__':
     if_full_cpu = True  # 是否全负荷cpu
     load_from_ck = False  # 从断点处开始训练
     epochs = 100  # epoch
-    batch = 4 # batch
+    batch = 36 # batch
     init_lr = 1e-4  # lr
     min_lr = 1e-7  # 最低学习率
     warmup_epochs = 0 # 后面打算不采用这个
     pretrain_pth = r'C:\Users\85002\Desktop\模型\模型pth与log\Spe_Spa_Attenres110_retrain_202504281258.pth' # 迁移学习需要预训练模型
     config_model_name = "SSAR"  # 模型名称
-    train_images_dir = r'D:\Data\Hgy\research_train_samples\Atrain_datasets.txt'  # 训练数据集
-    test_images_dir = r'D:\Data\Hgy\research_train_samples\Aeval_datasets.txt'  # 测试数据集
+    train_images_dir = r'd:\Data\Hgy\龚鑫涛试验数据\program_data\handle_class\clip_data_15classs_1x1\Atrain_datasets.txt'  # 训练数据集
+    test_images_dir = r'd:\Data\Hgy\龚鑫涛试验数据\program_data\handle_class\clip_data_15classs_1x1\Aeval_datasets.txt'  # 测试数据集
     ck_pth = None # 用于断点学习
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # 显卡设置
-    out_classes = 8 # 分类数
+    out_classes = 15 # 分类数
     GRAGUALLY_UNFRREZE = True
 
 
@@ -37,12 +37,16 @@ if __name__ == '__main__':
     # 配置训练数据集和模型
     train_image_lists = rewrite_paths_info(train_images_dir) # 使用rewrite好点 
     test_image_lists = rewrite_paths_info(test_images_dir)
-    train_dataset = Moni_leaning_dataset(train_image_lists)
-    eval_dataset = Moni_leaning_dataset(test_image_lists)
-    model = Constrastive_learning_Model(out_embedding=out_embeddings, out_classes=out_classes, in_shape=train_dataset.data_shape)  # 模型实例化
+    train_dataset = Dataset_1D(train_image_lists)
+    eval_dataset = Dataset_1D(test_image_lists)
+    model = Shallow_1DCNN(out_embedding=out_embeddings, out_classes=out_classes, in_shape=train_dataset.data_shape)  # 模型实例化
     print(f"Image shape: {train_dataset.data_shape}")
-    model.load_from_contrastive_model(pretrain_pth, map_location=device)
-    model.freeze_encoder()
+    if pretrain_pth is not None:
+        try: 
+            model.load_from_contrastive_model(pretrain_pth, map_location=device)
+            model.freeze_encoder()
+        except AttributeError as info:
+            print(info)
     optimizer = optim.Adam(model.parameters(), lr=init_lr)  # 优化器
     scheduler = StepLR(optimizer, step_size=step_size, gamma=0.1)  # 学习率调度器
 

@@ -19,7 +19,7 @@ def read_tif_with_gdal(tif_path):
     if dataset.dtype == np.int16:
         dataset = dataset.astype(np.float32) * 1e-4
     return dataset
-class Moni_leaning_dataset(Dataset):
+class Dataset_3D(Dataset):
     '''用于3D——CNN训练和测试'''
     def __init__(self, data_list, transform=None):
         """
@@ -48,6 +48,39 @@ class Moni_leaning_dataset(Dataset):
         image = torch.tensor(image, dtype=torch.float32)
         return image, label
 
+class Dataset_1D(Dataset):
+    '''用于1D-CNN训练和测试'''
+    def __init__(self, data_list, transform=None):
+        """
+        将列表划分为数据集
+        Args:
+            transform (callable, optional): 光谱变换操作
+        """
+        self.image_paths = data_list
+        self.transform = transform
+        image, label = self.__getitem__(0)
+        self.data_shape = image.shape  # 获取数据形状，例如 (bands, )
+
+    def __len__(self):
+        return len(self.image_paths)
+
+    def __getitem__(self, idx):
+        """
+        返回1D光谱数据和标签
+        image: (1, bands) → 适配 1D CNN 输入格式
+        """
+        image_path, label = self.image_paths[idx].split()
+        label = np.array(label, dtype=np.int16)
+        image = read_tif_with_gdal(image_path)  # shape: (bands, 1, 1)
+
+        image = image.squeeze()  # (bands,)
+        if self.transform:
+            image = self.transform(image)  # 可选变换
+
+        image = torch.tensor(image, dtype=torch.float32) # (bands,)
+        label = torch.tensor(label, dtype=torch.long)
+        return image, label
+    
 class MoniHDF5_leaning_dataset(Dataset):
     def __init__(self, h5_file):
         self.h5_file = h5_file

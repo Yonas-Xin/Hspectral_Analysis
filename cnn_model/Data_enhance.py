@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch
 from utils import read_txt_to_list,write_list_to_txt
 import os.path
-from cnn_model.Models.Data import Moni_leaning_dataset
+from cnn_model.Models.Data import Dataset_3D
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 import gdal_utils
@@ -101,7 +101,7 @@ def enhance_dataset(dataset_path_list, out_dir, factor=5, batch = 256):
         raise ValueError('文件夹已存在，为避免文件夹覆盖，请重新设置文件夹名称或者删除已存在的文件夹')
 
     base_name_lit = [(os.path.basename(dataset_path).split())[0] for dataset_path in dataset_path_list]
-    dataset = Moni_leaning_dataset(dataset_path_list)
+    dataset = Dataset_3D(dataset_path_list)
     dataloader = DataLoader(dataset, shuffle=False, batch_size=batch, num_workers=4)
     datasets_txt = os.path.join(out_dir, '.enhance_datasets.txt')
 
