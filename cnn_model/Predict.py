@@ -9,7 +9,7 @@ import numpy as np
 import torch
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-from cnn_model.Models.Models import Constrastive_learning_Model
+from cnn_model.Models.Models import Constrastive_learning_Model, Shallow_1DCNN
 import matplotlib
 from datetime import datetime
 import signal
@@ -116,13 +116,13 @@ def save_img(img1, img2, outpath):
 if __name__ == '__main__':
     input_data = r"D:\Data\Hgy\龚鑫涛试验数据\Image\research_GF5.dat"
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-    image_block_size = 64
-    block_size = 17
+    image_block_size = 512
+    block_size = 1
     batch = 256
-    model_pth = '.models/contrastive_learning_model.pth'  # 模型路径
+    model_pth = 'D:\Programing\pythonProject\Hspectral_Analysis\cnn_model\_results\models_pth\SSAR_202506261846.pth'  # 模型路径
     out_embedding = 24
-    out_classes = 16
-    csv_output_path = './out.csv'
+    out_classes = 15
+    csv_output_path = 'out.csv'
 
 
     dataloader_num_workers = cpu_count() // 4 # 根据cpu核心数自动决定num_workers数量
@@ -163,7 +163,7 @@ if __name__ == '__main__':
                     data_shape = dataset.image_shape
 
                 if model is None: # 进行模型的初始化和参数读取
-                    model = Constrastive_learning_Model(out_embedding=out_embedding, out_classes=out_classes, in_shape=data_shape) # 在这里进行模型初始化
+                    model = Shallow_1DCNN(out_embedding=out_embedding, out_classes=out_classes, in_shape=data_shape) # 在这里进行模型初始化
                     if model_pth is not None:
                         dic = torch.load(model_pth, weights_only=True, map_location=device)['model']
                         model.load_state_dict(dic)
@@ -176,7 +176,7 @@ if __name__ == '__main__':
                     dataloader = DataLoader(dataset, batch_size=batch, shuffle=False, pin_memory=True,num_workers=dataloader_num_workers,prefetch_factor=2)
                     for data in tqdm(dataloader, total=len(dataloader), desc=f'Block{i}_{j}'):
                         batch = data.shape[0]
-                        data = data.unsqueeze(1).to(device)
+                        data = data.to(device)
                         outputs = model(data)
                         _, predicted = torch.max(outputs, 1)
                         predict_data[idx:idx + batch, ] = predicted

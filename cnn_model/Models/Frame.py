@@ -1,10 +1,12 @@
 import os
 from pathlib import Path
 import torch.nn as nn
+import numpy as np
 from datetime import datetime
 from tqdm import tqdm
 from multiprocessing import cpu_count
 from torch.utils.tensorboard import SummaryWriter
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 import torch
 import signal
 import shutil
@@ -37,7 +39,7 @@ class Cnn_model_frame:
             os.makedirs(log_dir)
         self.model_path = os.path.join(model_dir, f'{model_save_name}.pth')
         self.log_path = os.path.join(log_dir, f'{model_save_name}.log')
-        self.tensorboard_dir = os.path.join(self.parent_dir, f'tensorboard_logs\\logs_{model_save_name}')
+        self.tensorboard_dir = os.path.join(self.parent_dir, f'tensorboard_logs\\{model_save_name}')
 
         #配置训练信息
         self.if_full_cpu = if_full_cpu
@@ -197,17 +199,50 @@ class Cnn_model_frame:
                 if (epoch + 1) < self.warmup_epochs or current_lr <= self.min_lr:
                     pass
                 else:
-                    scheduler.step()
+                    if scheduler is not None:
+                        scheduler.step()
                 self.log_writer.flush()
+            if eval_dataloader is not None:
+                self.print_result_report(model=model, ck_pth=self.model_path, eval_dataloader=eval_dataloader) # 训练完成打印报告
         except Exception as e:
             self.clean_up()
             print(f"Training interrupted due to: {str(e)}")
             raise
         finally:
-            result = f'Model saved at Epoch{model_save_epoch}. \nThe best training_acc:{best_train_accuracy}.\nThe best testing_acc:{best_test_accuracy}'
+            result = f'Model saved at Epoch{model_save_epoch}. \nThe best training_acc:{best_train_accuracy:.4f}%.\nThe best testing_acc:{best_test_accuracy:.4f}%'
             self.log_writer.write(result + '\n')
             self.log_writer.close() # 再次确保日志文件被正确关闭
             self.writer.close()
             print(f"Training completed. Program exited.")
             print(result)
             os._exit(0) # 退出主程序
+    
+    def print_result_report(self, model, ck_pth, eval_dataloader):
+        checkpoint = torch.load(ck_pth, weights_only=True, map_location=self.device)
+        model.load_state_dict(checkpoint['model']) # 从保存的最佳模型中加载参数
+        model.eval()
+        all_labels = []
+        all_preds = []
+        with torch.no_grad():
+            for data, label in tqdm(eval_dataloader, desc='Generating Report', total=len(eval_dataloader)):
+                data, label = data.to(self.device), label.to(self.device)
+                output = model(data)
+                _, preds = torch.max(output, 1)
+                all_labels.extend(label.cpu().numpy())
+                all_preds.extend(preds.cpu().numpy())
+
+            accuracy = accuracy_score(all_labels, all_preds)
+            clf_report = classification_report(all_labels, all_preds)
+            conf_matrix = confusion_matrix(all_labels, all_preds)
+
+            self.log_writer.write(f"\n\nTest_acc: {accuracy:.4f}\n")
+            self.log_writer.write(f"Classification Report:\n")
+            self.log_writer.write(clf_report + "\n\n")
+            self.log_writer.write("Confusion Matrix:\n")
+            self.log_writer.write(np.array2string(conf_matrix, separator=', '))
+            self.log_writer.write('\n')
+            self.log_writer.flush()
+
+            print("Test Accuracy:", accuracy)
+            print("Classification Report:\n", clf_report)
+            print("Confusion Matrix:\n", conf_matrix)

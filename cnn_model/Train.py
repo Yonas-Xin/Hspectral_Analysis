@@ -15,7 +15,7 @@ import math
 if __name__ == '__main__':
     if_full_cpu = True  # 是否全负荷cpu
     load_from_ck = False  # 从断点处开始训练
-    epochs = 100  # epoch
+    epochs = 3  # epoch
     batch = 36 # batch
     init_lr = 1e-4  # lr
     min_lr = 1e-7  # 最低学习率
@@ -49,6 +49,8 @@ if __name__ == '__main__':
             print(info)
     optimizer = optim.Adam(model.parameters(), lr=init_lr)  # 优化器
     scheduler = StepLR(optimizer, step_size=step_size, gamma=0.1)  # 学习率调度器
+    if step_size <= 0: # step太小,那么不设置调度器
+        scheduler = None
 
     train_dataloader = DataLoader(train_dataset, batch_size=batch, shuffle=True, pin_memory=True, 
                                   num_workers=dataloader_num_workers, prefetch_factor=2,persistent_workers=True)  # 数据迭代器
