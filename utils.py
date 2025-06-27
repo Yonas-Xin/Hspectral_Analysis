@@ -20,7 +20,6 @@ ACADEMIC_COLOR = ['#d5e5c9', '#d4dee9', '#d9c2df', '#e2795a', '#eac56c', '#299d9
 def label_to_rgb(t, MAP=ACADEMIC_COLOR):
     '''根据颜色条将label映射到rgb图像'''
     MAP = batch_hex_to_rgb(MAP) # 将HEX值转化为rgb值
-    print(MAP)
     if not isinstance(t, (np.int8, np.int16, np.int32, np.int64)):
         t = t.astype(np.int16)
     H, W = t.shape
