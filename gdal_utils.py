@@ -318,5 +318,70 @@ def crop_image_by_mask_block(image_file, out_filepath, sampling_position, image_
     dataset_path = os.path.join(out_filepath, '.datasets.txt')
     write_list_to_txt(pathlist, dataset_path)
     print('样本裁剪完成')
+
+def face_vector_to_mask(shp_path, geotransform, projection, rows, cols, str='class', output_path=None):
+    """
+    将面Shapefile转换为分类栅格数组
+
+    参数:
+        shp_path: str - Shapefile路径(.shp)
+        geotransform: tuple - GDAL地理变换参数(6个值)
+        projection: str - WKT格式的坐标参考系统
+        rows: int - 输出栅格行数-高
+        cols: int - 输出栅格列数-宽
+
+    返回:
+        numpy.ndarray - 二维数组，被面覆盖的像素为class值(0,1,2...)，其余为-1
+
+    异常:
+        ValueError - 当class字段值不是整数时
+        RuntimeError - GDAL操作失败时
+    """
+    shp_ds = ogr.Open(shp_path)
+    shp_layer = shp_ds.GetLayer()
+    layer_defn = shp_layer.GetLayerDefn()
+    
+    # 检查class字段是否存在且为整数类型
+    class_field_idx = layer_defn.GetFieldIndex(str)
+    if class_field_idx == -1:
+        raise RuntimeError(f"Shapefile中缺少'{str}'字段")
+    
+    field_type = layer_defn.GetFieldDefn(class_field_idx).GetType()
+    if field_type not in (ogr.OFTInteger, ogr.OFTInteger64):
+        raise ValueError(f"'{str}'字段必须是整型")
+    # 创建内存栅格
+    driver = gdal.GetDriverByName('MEM')
+    raster_ds = driver.Create(
+        '', 
+        cols, 
+        rows, 
+        1, 
+        gdal.GDT_Int16
+    )
+    raster_ds.SetGeoTransform(geotransform)
+    raster_ds.SetProjection(projection)
+
+    band = raster_ds.GetRasterBand(1)
+    band.WriteArray(np.full((rows, cols), -1)) # 值为-1
+    band.SetNoDataValue(-1)
+    options = [
+        f'ATTRIBUTE={str}',  # 使用class字段作为像素值
+        'ALL_TOUCHED=TRUE'  # 部分覆盖的像素也计入
+    ]
+    gdal.RasterizeLayer(
+        raster_ds, 
+        [1],  # 波段号
+        shp_layer,
+        options=options
+    )
+    result = band.ReadAsArray()
+    if output_path:
+        out_driver = gdal.GetDriverByName('GTiff')
+        out_ds = out_driver.CreateCopy(output_path, raster_ds)
+        out_ds = None  # 关闭文件
+    raster_ds = None
+    shp_ds = None
+    return result
+
 if __name__ == '__main__':
     point_value_merge(r'D:\Data\Hgy\龚鑫涛试验数据\program_data\cluster\research1_gmm24_optimization2 - 副本.shp', [13,23])

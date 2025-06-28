@@ -8,7 +8,7 @@ from scipy.ndimage import gaussian_filter1d
 from sklearn.preprocessing import StandardScaler
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-from gdal_utils import nodata_value,mask_to_vector_gdal,vector_to_mask,write_data_to_tif,write_list_to_txt
+from gdal_utils import nodata_value,mask_to_vector_gdal,vector_to_mask,write_data_to_tif,write_list_to_txt,face_vector_to_mask
 from utils import save_matrix_to_csv
 import spectral as spy
 from skimage.segmentation import slic
@@ -485,6 +485,9 @@ class Hyperspectral_Image:
         write_data_to_tif(filename, img_data.transpose(2,0,1), self.dataset.GetGeoTransform(), self.dataset.GetProjection(),
                           nodata_value=self.no_data)
         return True
+    
+    def face_vector_to_mask(self, shp_file):
+        return face_vector_to_mask(shp_file, self.dataset.GetGeoTransform(), self.dataset.GetProjection(), self.rows, self.cols)
 
 def show_img(data, rgb=(1,2,3)):
     image = data[rgb,:,:].transpose(1,2,0)
