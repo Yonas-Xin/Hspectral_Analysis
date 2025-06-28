@@ -1,12 +1,16 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.ticker import MaxNLocator
+import matplotlib
 ACADEMIC_COLOR = ['#d5e5c9', '#d4dee9', '#d9c2df', '#e2795a', '#eac56c', '#299d90', '#895c56', '#1bb5b9',
                   '#d68e04', '#eea78b', '#d5c1d6', '#9566a8', '#a4d2a1', '#e98d49', '#639dfc', '#93a906',]
 LINE_COLOR1 = ['#ea272a', '#435aa5', '#6cb48d', '#a47748', '#f7a25c', '#848484']
 LINE_COLOR2 = ['#1bb5b9', '#eea78b', '#d5c1d6', '#9566a8', '#a4d2a1', '#e98d49', '#ebcc75', '#489faa']
 DEEP_COLOR = ['#e2795a', '#299d90', '#eac56c', '#895c56']
 SHALLOW_COLOR = ['#d5e5c9', '#d4dee9', '#d9c2df']
+matplotlib.rcParams['font.family'] = 'Times New Roman'
+matplotlib.rcParams['mathtext.fontset'] = 'stix'
+matplotlib.rcParams['axes.unicode_minus'] = False
 def find_target_from_log(log_file_path, find_target='Accuracy: '):
     """
     从 .log 文件中提取匹配值返回训练数据
@@ -91,8 +95,8 @@ def plot_line(*args, title='Accuracy Curve', labels=None, save_path=None):
     plt.show()
 
 if __name__=='__main__':
-    save_path = None
-    log_file_path = r"D:\Programing\pythonProject\Hspectral_Analysis\cnn_model\_results\logs\SSAR_202506261846.log"
-    train_accuracy,test_accuracy = find_target_from_log(log_file_path, find_target='Accuracy: ')
+    save_path = '3D_CNN_202506262008_loss.png'
+    log_file_path = r"C:\Users\85002\Desktop\GF5result\train_process\3D_CNN_202506262008.log"
+    train_accuracy,test_accuracy = find_target_from_log(log_file_path, find_target='Loss: ')
     label = ['Train', 'Test']
     plot_line(train_accuracy, test_accuracy, title="Accuracy Curve", labels=label, save_path=save_path)

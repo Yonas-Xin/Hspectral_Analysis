@@ -15,8 +15,8 @@ def block_generator(data, block_size=256):
             position_mask = np.zeros((rows, cols))
             position_mask[i:i+actual_rows, j:j+actual_cols] = 1
             yield position_mask
-ACADEMIC_COLOR = ['#d5e5c9', '#d4dee9', '#d9c2df', '#e2795a', '#eac56c', '#299d90', '#895c56', '#1bb5b9',
-                  '#d68e04', '#eea78b', '#d5c1d6', '#9566a8', '#a4d2a1', '#e98d49', '#639dfc', '#93a906',]
+ACADEMIC_COLOR = ['#d5e5c9', '#1c6995', '#d9c2df', '#e2795a', '#eac56c', '#299d90', '#895c56', '#1bb5b9',
+                  '#d68e04', '#eea78b', '#459741', '#9566a8', '#a4d2a1', '#e98d49', '#639dfc', '#93a906',]
 def label_to_rgb(t, MAP=ACADEMIC_COLOR):
     '''根据颜色条将label映射到rgb图像'''
     MAP = batch_hex_to_rgb(MAP) # 将HEX值转化为rgb值

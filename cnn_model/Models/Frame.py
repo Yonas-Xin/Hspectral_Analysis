@@ -6,7 +6,7 @@ from datetime import datetime
 from tqdm import tqdm
 from multiprocessing import cpu_count
 from torch.utils.tensorboard import SummaryWriter
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, cohen_kappa_score
 import torch
 import signal
 import shutil
@@ -232,10 +232,12 @@ class Cnn_model_frame:
                 all_preds.extend(preds.cpu().numpy())
 
             accuracy = accuracy_score(all_labels, all_preds)
-            clf_report = classification_report(all_labels, all_preds)
+            clf_report = classification_report(all_labels, all_preds, digits=4)
             conf_matrix = confusion_matrix(all_labels, all_preds)
+            kappa = cohen_kappa_score(all_labels, all_preds)
 
             self.log_writer.write(f"\n\nTest_acc: {accuracy:.4f}\n")
+            self.log_writer.write(f"Cohen's Kappa: {kappa:.4f}")
             self.log_writer.write(f"Classification Report:\n")
             self.log_writer.write(clf_report + "\n\n")
             self.log_writer.write("Confusion Matrix:\n")
@@ -244,5 +246,6 @@ class Cnn_model_frame:
             self.log_writer.flush()
 
             print("Test Accuracy:", accuracy)
+            print(f"Cohen's Kappa: {kappa:.4f}")
             print("Classification Report:\n", clf_report)
             print("Confusion Matrix:\n", conf_matrix)
