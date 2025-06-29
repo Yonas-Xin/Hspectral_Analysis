@@ -9,7 +9,7 @@ import numpy as np
 import torch
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-from cnn_model.Models.Models import Constrastive_learning_Model, Shallow_1DCNN
+from cnn_model.Models.Models import MODEL_DICT
 import matplotlib
 from datetime import datetime
 import signal
@@ -114,20 +114,21 @@ def save_img(img1, img2, outpath):
     plt.close()
     
 if __name__ == '__main__':
-    input_data = r"D:\Data\Hgy\龚鑫涛试验数据\Image\research_GF5.dat"
-    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-    image_block_size = 512
+    model_name = "Shallow_1DCNN"
+    out_classes = 15
     block_size = 1
     batch = 256
+    input_data = r"D:\Data\Hgy\龚鑫涛试验数据\Image\research_GF5.dat"
+    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     model_pth = 'D:\Programing\pythonProject\Hspectral_Analysis\cnn_model\_results\models_pth\SSAR_202506261846.pth'  # 模型路径
-    out_embedding = 24
-    out_classes = 15
     csv_output_path = 'out.csv'
 
 
     dataloader_num_workers = cpu_count() // 4 # 根据cpu核心数自动决定num_workers数量
     data_shape = None
     model = None
+    image_block_size = 512
+    out_embedding = 24
     def interrupt_handler(signum, frame):
         print("\nInterrupt signal received.")
         clean_up()
@@ -163,7 +164,7 @@ if __name__ == '__main__':
                     data_shape = dataset.image_shape
 
                 if model is None: # 进行模型的初始化和参数读取
-                    model = Shallow_1DCNN(out_embedding=out_embedding, out_classes=out_classes, in_shape=data_shape) # 在这里进行模型初始化
+                    model = MODEL_DICT['model_name'](out_embedding=out_embedding, out_classes=out_classes, in_shape=data_shape) # 在这里进行模型初始化
                     if model_pth is not None:
                         dic = torch.load(model_pth, weights_only=True, map_location=device)['model']
                         model.load_state_dict(dic)

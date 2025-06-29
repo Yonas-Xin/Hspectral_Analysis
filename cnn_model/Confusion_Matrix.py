@@ -2,16 +2,11 @@ import sys, os
 base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(base_path)
 import numpy as np
-import os
-import matplotlib.pyplot as plt
-import seaborn as sns
-from tqdm import tqdm  # 添加进度条
 import matplotlib
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-matplotlib.use('Agg')  # 使用非GUI后端，彻底绕过tkinter
 matplotlib.rcParams['font.family'] = 'Times New Roman'
 matplotlib.rcParams['mathtext.fontset'] = 'stix'
 matplotlib.rcParams['axes.unicode_minus'] = False

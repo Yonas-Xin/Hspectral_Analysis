@@ -2,15 +2,9 @@ import sys, os
 base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(base_path)
 import torch
-import torch.optim as optim
-from cnn_model.Models.Models import Constrastive_learning_Model, Shallow_3DCNN, Shallow_1DCNN
-from cnn_model.Models.Data import Dataset_3D, Dataset_1D
-from torch.optim.lr_scheduler import StepLR,ExponentialLR,ReduceLROnPlateau
-from cnn_model.Models.Frame import Cnn_model_frame
-from utils import read_txt_to_list, rewrite_paths_info
+from cnn_model.Models.Models import MODEL_DICT, DATASET_DICT
+from utils import rewrite_paths_info
 from torch.utils.data import DataLoader
-from multiprocessing import cpu_count
-import math
 from tqdm import tqdm
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, cohen_kappa_score
 import numpy as np
@@ -47,6 +41,7 @@ def print_result_report(model, eval_dataloader, log_writer, device):
         print("Classification Report:\n", clf_report)
         print("Confusion Matrix:\n", conf_matrix)
 if __name__ == '__main__':
+    model_name = "Shallow_1DCNN"
     writer_name = '1DCNN.log'
     saved_model_name = r'D:\Programing\pythonProject\Hspectral_Analysis\cnn_model\_results\models_pth\SSAR_202506261846.pth'
     batch = 36 # batch
@@ -56,14 +51,12 @@ if __name__ == '__main__':
 
 
     out_embeddings = 24 # 模型初始化必要，后面打算把这个参数设置为固定值
-    dataloader_num_workers = cpu_count() // 4 # 根据cpu核心数自动决定num_workers数量
     print(f'Using num_workers: {dataloader_num_workers}')
     # 配置训练数据集和模型
     test_image_lists = rewrite_paths_info(test_images_dir)
-    eval_dataset = Dataset_1D(test_image_lists)
-    model = Shallow_1DCNN(out_embedding=out_embeddings, out_classes=out_classes, in_shape=eval_dataset.data_shape)  # 模型实例化
+    eval_dataset = DATASET_DICT[model_name](test_image_lists)
+    model = MODEL_DICT[model_name](out_embedding=out_embeddings, out_classes=out_classes, in_shape=eval_dataset.data_shape)  # 模型实例化
     model.load_state_dict(torch.load(saved_model_name, weights_only=True, map_location=device)['model'])
-    eval_dataloader = DataLoader(eval_dataset, batch_size=batch, shuffle=True, pin_memory=True, 
-                                num_workers=dataloader_num_workers, prefetch_factor=2,persistent_workers=True)  # 数据迭代器
+    eval_dataloader = DataLoader(eval_dataset, batch_size=batch, shuffle=False, pin_memory=True, num_workers=0)  # 数据迭代器
     log_writer = open(writer_name, 'w')
     print_result_report(model=model, eval_dataloader=eval_dataloader, log_writer=log_writer, device=device)

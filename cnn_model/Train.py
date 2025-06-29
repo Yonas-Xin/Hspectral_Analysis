@@ -3,31 +3,30 @@ base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(base_path)
 import torch
 import torch.optim as optim
-from cnn_model.Models.Models import Constrastive_learning_Model, Shallow_3DCNN, Shallow_1DCNN
-from cnn_model.Models.Data import Dataset_3D, Dataset_1D
-from torch.optim.lr_scheduler import StepLR,ExponentialLR,ReduceLROnPlateau
-from cnn_model.Models.Frame import Cnn_model_frame
-from utils import read_txt_to_list, rewrite_paths_info
+from cnn_model.Models.Models import DATASET_DICT, MODEL_DICT
+from torch.optim.lr_scheduler import StepLR
+from cnn_model.Models.Frame import Cnn_Model_Frame
+from utils import rewrite_paths_info
 from torch.utils.data import DataLoader
 from multiprocessing import cpu_count
 import math
 
 if __name__ == '__main__':
-    if_full_cpu = True  # 是否全负荷cpu
-    load_from_ck = False  # 从断点处开始训练
+    model_name = "Shallow_1DCNN" # 使用model_name 与模型库模型匹配
+    out_classes = 15 # 分类数
     epochs = 3  # epoch
     batch = 36 # batch
     init_lr = 1e-4  # lr
     min_lr = 1e-7  # 最低学习率
-    warmup_epochs = 0 # 后面打算不采用这个
+    GRAGUALLY_UNFRREZE = True
     pretrain_pth = r'C:\Users\85002\Desktop\模型\模型pth与log\Spe_Spa_Attenres110_retrain_202504281258.pth' # 迁移学习需要预训练模型
-    config_model_name = "SSAR"  # 模型名称
     train_images_dir = r'd:\Data\Hgy\龚鑫涛试验数据\program_data\handle_class\clip_data_15classs_1x1\Atrain_datasets.txt'  # 训练数据集
     test_images_dir = r'd:\Data\Hgy\龚鑫涛试验数据\program_data\handle_class\clip_data_15classs_1x1\Aeval_datasets.txt'  # 测试数据集
-    ck_pth = None # 用于断点学习
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # 显卡设置
-    out_classes = 15 # 分类数
-    GRAGUALLY_UNFRREZE = True
+    ck_pth = None # 用于断点学习
+    load_from_ck = False  # 从断点处开始训练
+    if_full_cpu = True  # 是否全负荷cpu
+
 
 
     out_embeddings = 24 # 模型初始化必要，后面打算把这个参数设置为固定值
@@ -37,16 +36,27 @@ if __name__ == '__main__':
     # 配置训练数据集和模型
     train_image_lists = rewrite_paths_info(train_images_dir) # 使用rewrite好点 
     test_image_lists = rewrite_paths_info(test_images_dir)
-    train_dataset = Dataset_1D(train_image_lists)
-    eval_dataset = Dataset_1D(test_image_lists)
-    model = Shallow_1DCNN(out_embedding=out_embeddings, out_classes=out_classes, in_shape=train_dataset.data_shape)  # 模型实例化
+    try:
+        train_dataset = DATASET_DICT[model_name](train_image_lists)
+        eval_dataset = DATASET_DICT[model_name](test_image_lists)
+        model = MODEL_DICT[model_name](out_embedding=out_embeddings, out_classes=out_classes, in_shape=train_dataset.data_shape)  # 模型实例化
+    except KeyError as k:
+        raise KeyError('model name must be "SARCN", "Shallow_1DCNN" or "Shallow_3DCNN"')
     print(f"Image shape: {train_dataset.data_shape}")
     if pretrain_pth is not None:
         try: 
             model.load_from_contrastive_model(pretrain_pth, map_location=device)
             model.freeze_encoder()
+            model_name = model_name + '_Pre'
         except AttributeError as info:
+            model_name = model_name + '_NoPre'
+            GRAGUALLY_UNFRREZE = False
             print(info)
+    else: 
+        model_name = model_name + '_NoPre'
+        GRAGUALLY_UNFRREZE = False
+    if GRAGUALLY_UNFRREZE == True: model_name = model_name + '_UnFreeze'
+    else: model_name = model_name + '_Freeze'
     optimizer = optim.Adam(model.parameters(), lr=init_lr)  # 优化器
     scheduler = StepLR(optimizer, step_size=step_size, gamma=0.1)  # 学习率调度器
     if step_size <= 0: # step太小,那么不设置调度器
@@ -57,10 +67,10 @@ if __name__ == '__main__':
     eval_dataloader = DataLoader(eval_dataset, batch_size=batch, shuffle=True, pin_memory=True, 
                                  num_workers=dataloader_num_workers, prefetch_factor=2,persistent_workers=True)  # 数据迭代器
 
-    frame = Cnn_model_frame(model_name=config_model_name, 
+    frame = Cnn_Model_Frame(model_name=model_name, 
                             epochs=epochs, 
                             min_lr=min_lr,
-                            warmup_epochs=warmup_epochs,
+                            warmup_epochs=None,
                             device=device, 
                             if_full_cpu=if_full_cpu,
                             gradually_unfreeze=GRAGUALLY_UNFRREZE)

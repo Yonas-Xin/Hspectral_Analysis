@@ -1,5 +1,5 @@
 import os
-from pathlib import Path
+import sys
 import torch.nn as nn
 import numpy as np
 from datetime import datetime
@@ -8,9 +8,9 @@ from multiprocessing import cpu_count
 from torch.utils.tensorboard import SummaryWriter
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, cohen_kappa_score
 import torch
-import signal
 import shutil
-class Cnn_model_frame:
+
+class Cnn_Model_Frame:
     def __init__(self, model_name, min_lr=1e-7, epochs=300, warmup_epochs=30, device=None, if_full_cpu=True, gradually_unfreeze=True):
         self.loss_func = nn.CrossEntropyLoss()
         self.min_lr = min_lr
@@ -46,15 +46,6 @@ class Cnn_model_frame:
         self.test_epoch_min_loss = 100
         self.test_epoch_max_acc = -1
         self.start_epoch = 0
-
-        signal.signal(signal.SIGINT, self.interrupt_handler)  # 注册中断信号处理函数
-        signal.signal(signal.SIGTERM, self.interrupt_handler)  # 注册终止信号处理函数
-    def interrupt_handler(self, signum, frame):
-        print("\nInterrupt signal received.")
-        if not os.path.exists(self.model_path):
-            print("Model was not saved. Attempting to clean up log files...")
-            self.clean_up()
-        exit(1)
     
     def clean_up(self):
         """清理日志文件和tensorboard目录"""
@@ -202,20 +193,21 @@ class Cnn_model_frame:
                     if scheduler is not None:
                         scheduler.step()
                 self.log_writer.flush()
-            if eval_dataloader is not None:
-                self.print_result_report(model=model, ck_pth=self.model_path, eval_dataloader=eval_dataloader) # 训练完成打印报告
-        except Exception as e:
-            self.clean_up()
-            print(f"Training interrupted due to: {str(e)}")
-            raise
-        finally:
             result = f'Model saved at Epoch{model_save_epoch}. \nThe best training_acc:{best_train_accuracy:.4f}%.\nThe best testing_acc:{best_test_accuracy:.4f}%'
             self.log_writer.write(result + '\n')
+            print(result)
+            if eval_dataloader is not None:
+                self.print_result_report(model=model, ck_pth=self.model_path, eval_dataloader=eval_dataloader) # 训练完成打印报告
+        except KeyboardInterrupt: # 捕获键盘中断信号
+            print(f"Training interrupted due to: KeyboardInterrupt")
+            self.clean_up()
+        except Exception as e: 
+            print(f"Training interrupted due to: {str(e)}")
+            self.clean_up()
+        finally:
             self.log_writer.close() # 再次确保日志文件被正确关闭
             self.writer.close()
-            print(f"Training completed. Program exited.")
-            print(result)
-            os._exit(0) # 退出主程序
+            sys.exit(0)
     
     def print_result_report(self, model, ck_pth, eval_dataloader):
         checkpoint = torch.load(ck_pth, weights_only=True, map_location=self.device)

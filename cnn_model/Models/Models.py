@@ -3,6 +3,7 @@ from Models.Decoder import *
 import torch.nn as nn
 import torch.nn.functional as F
 import torch
+from Models.Data import Dataset_3D, Dataset_1D
 class Constrastive_learning_Model(nn.Module):
     def __init__(self, out_embedding=24, out_classes=8, in_shape=(138,17,17)):
         super().__init__()
@@ -72,3 +73,14 @@ class Shallow_1DCNN(nn.Module):
         x = self.encoder(x)
         x = self.decoder(x)
         return x
+    
+MODEL_DICT = {
+    'SRACN':Constrastive_learning_Model,
+    'Shallow_1DCNN':Shallow_1DCNN,
+    'Shallow_3DCNN':Shallow_3DCNN
+}
+DATASET_DICT = {
+    'SRACN':Dataset_3D,
+    'Shallow_1DCNN':Dataset_1D,
+    'Shallow_3DCNN':Dataset_3D
+}
