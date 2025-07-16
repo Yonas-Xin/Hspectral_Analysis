@@ -6,18 +6,24 @@ except ImportError:
     print('gdal is not used')
 import numpy as np
 from tqdm import tqdm
+from datetime import datetime
+import time
+import sys
 nodata_value = 0
 
 def write_data_to_tif(output_file, data, geotransform, projection, nodata_value=nodata_value):
     """
-    将数据写入 GeoTIFF 文件，并保留与原文件相同的元数据
-    Parameters:
-        output_file: str, 输出的 GeoTIFF 文件路径
-        data: ndarray, 写入的数据，形状为(row, col, bands)
-        geotransform: tuple, GeoTIFF 的地理变换参数
-        projection: str, WKT 格式的投影信息
-    Returns:
-        None
+    将数组数据写入GeoTIFF文件
+    
+    参数:
+        output_file (str): 输出文件路径
+        data (np.ndarray): 三维数组（波段,行,列）
+        geotransform (tuple): 6参数地理变换
+        projection (str): WKT格式的坐标参考系统
+        nodata_value (int/float): NoData值，默认0
+    
+    异常:
+        IOError: 当文件创建失败时
     """
     bands, rows, cols =data.shape
     if data.dtype == np.int16:
@@ -156,22 +162,44 @@ def mask_to_vector_gdal(mask_matrix,geotransform, projection=None, output_shapef
                 geo_x = geotransform[0] + col * geotransform[1] + row * geotransform[2]
                 geo_y = geotransform[3] + col * geotransform[4] + row * geotransform[5]
                 point = ogr.Geometry(ogr.wkbPoint)
-                value = int(value-1)
+                # if write_value is None:
+                #     write_value = int(value-1)
                 point.AddPoint(geo_x, geo_y)
                 # 创建一个要素（Feature）并设置几何和属性值
                 feature = ogr.Feature(layer.GetLayerDefn())
                 feature.SetGeometry(point)
-                feature.SetField('class', value)  # 设置分类属性值
+                feature.SetField('class', 0)  # 设置分类属性值
                 layer.CreateFeature(feature)  # 将特征写入图层
                 feature = None  # 清理
     # 关闭数据源，保存Shapefile
     data_source = None
-    return f"shp文件已保存，文件地址：{output_shapefile}"
+    print(f"{output_shapefile} has been created successfully.")
 
+def mask_to_multivector(mask_matrix, geotransform, projection=None, output_dir="./Position_mask", output_dir_name=None):
+    """
+    在指定文件夹下创建一个新文件夹保存样本的矢量点文件"""
+    labels = np.unique(mask_matrix)
+    if output_dir_name is None:
+        output_dir_name = 'SAMPLES_DIR'
+    OUTPUT_DIR = os.path.join(output_dir, output_dir_name)
+    counter = 1
+    while os.path.exists(OUTPUT_DIR):
+        OUTPUT_DIR = os.path.join(output_dir, f"{output_dir_name}_{counter}")
+        counter += 1
+    os.makedirs(OUTPUT_DIR)
+    for label in labels:
+        if label > 0:
+            input = np.zeros_like(mask_matrix, dtype=np.int16)
+            time.sleep(1) # 确保间隔一秒创建一个文件
+            current_time = datetime.now().strftime("%Y%m%d%H%M%S")
+            output_shapefile = os.path.join(OUTPUT_DIR, f"{current_time}_sample.shp")
+            input[mask_matrix == label] = label
+            mask_to_vector_gdal(input, geotransform, projection, output_shapefile)
 
-def vector_to_mask(shapefile, geotransform, rows, cols):
+def vector_to_mask(shapefile, geotransform, rows, cols, value=None):
     """
     将矢量点文件转化为二维矩阵（mask矩阵）
+    mask属性值从1开始，背景为0
     """
     mask_matrix = np.zeros((rows, cols), dtype=int)
     driver = ogr.GetDriverByName('ESRI Shapefile')
@@ -192,10 +220,30 @@ def vector_to_mask(shapefile, geotransform, rows, cols):
         col = int((geo_x - geotransform[0]) / geotransform[1])  # 计算列索引
         row = int((geo_y - geotransform[3]) / geotransform[5])  # 计算行索引
         if 0 <= row < rows and 0 <= col < cols:        # 确保索引在矩阵范围内
-            # 获取'Class'字段的值，假设在Shapefile中为'class'
-            value = feature.GetField('class')
-            mask_matrix[row, col] = value + 1  # 假设从1开始的class，且需要恢复为原始值
+            if value is not None:
+                mask_matrix[row, col] = value
+            # else:mask_matrix[row, col] = feature.GetField('class') + 1  # 如果没有指定值，则使用字段“class”值
+            else: mask_matrix[row, col] = 1
     data_source = None
+    return mask_matrix
+
+def mutivetor_to_mask(shapefile_dir, geotransform, rows, cols):
+    """
+    将指定文件夹下的所有矢量点文件转化为二维矩阵（mask矩阵）
+    """
+    mask_matrix = np.zeros((rows, cols), dtype=int)
+    shapefiles = search_files_in_directory(shapefile_dir, extension='.shp')
+    if not shapefiles:
+        raise RuntimeError(f"No shapefiles found in directory: {shapefile_dir}")
+    for idx, shapefile in enumerate(shapefiles):
+        temp_mask = vector_to_mask(shapefile, geotransform, rows, cols, value=idx+1)
+        # 检查是否有重叠（即 mask_matrix 和 temp_mask 在相同位置都有非零值）
+        overlap = np.logical_and(mask_matrix > 0, temp_mask > 0)
+        if np.any(overlap):
+            raise RuntimeError(
+                f"There is an overlap in the sample points, please check the file! "
+            )
+        mask_matrix += temp_mask
     return mask_matrix
 
 def point_value_merge(shapefile, value:list):
@@ -383,5 +431,164 @@ def face_vector_to_mask(shp_path, geotransform, projection, rows, cols, str='cla
     shp_ds = None
     return result
 
+def clip_by_shp(out_dir, sr_img, point_shp, block_size=30, out_tif_name='img', fill_value=0, value=None):
+    """
+    根据点Shapefile从影像中裁剪指定大小的图像块
+    
+    参数:
+        out_dir (str): 输出目录路径
+        sr_img (str/gdal.Dataset): 输入影像路径或已打开的GDAL数据集对象
+        point_shp (str): 点要素Shapefile路径
+        block_size (int): 裁剪块大小（像素），默认30
+        out_tif_name (str): 输出文件名前缀，默认'img'
+        fill_value (int/float): 边缘填充值，默认0
+        value (int): 为输出文件名添加的标签值，默认None
+    
+    返回:
+        list: 生成的图像路径列表，格式为["path1.tif label1", "path2.tif label2", ...]
+    
+    异常:
+        RuntimeError: 当无法打开输入文件时
+        TypeError: 当sr_img参数类型无效时
+    """
+    # 计算中心偏移
+    if block_size % 2 == 0:
+        left_top = block_size // 2 - 1
+        right_bottom = block_size // 2
+    else:
+        left_top = right_bottom = block_size // 2
+
+    # 读取原始影像
+    need_close = False
+    if isinstance(sr_img, str):
+        im_dataset = gdal.Open(sr_img)
+        if im_dataset is None:
+            raise RuntimeError(f"无法打开影像文件: {sr_img}")
+        need_close = True
+    elif isinstance(sr_img, gdal.Dataset):
+        im_dataset = sr_img
+    else:
+        raise TypeError("sr_img必须是文件路径字符串或GDAL数据集对象")
+    
+    im_geotrans = im_dataset.GetGeoTransform()
+    im_proj = im_dataset.GetProjection()
+    im_width = im_dataset.RasterXSize
+    im_height = im_dataset.RasterYSize
+    im_bands = im_dataset.RasterCount
+
+    # 读取样本点
+    shp_dataset = ogr.Open(point_shp)
+    if shp_dataset is None:
+        raise RuntimeError(f"无法打开矢量文件: {point_shp}")
+    
+    layer = shp_dataset.GetLayer()
+    count = layer.GetFeatureCount()
+    pbar = tqdm(total=count) # 进度条
+    idx = 0
+    out_dataset = []
+    for feature in layer:
+        geom = feature.GetGeometryRef()
+        geoX, geoY = geom.GetX(), geom.GetY()
+        
+        # 转换坐标到像素位置
+        x = int((geoX - im_geotrans[0]) / im_geotrans[1])
+        y = int((geoY - im_geotrans[3]) / im_geotrans[5])
+        
+        # 计算裁剪窗口
+        x_start = x - left_top
+        y_start = y - left_top
+        x_end = x + right_bottom + 1
+        y_end = y + right_bottom + 1
+        
+        # 计算实际可读取范围
+        read_x = max(0, x_start)
+        read_y = max(0, y_start)
+        read_width = min(x_end, im_width) - read_x
+        read_height = min(y_end, im_height) - read_y
+        
+        # 如果有有效区域可读取
+        if read_width > 0 and read_height > 0: # 在影像范围内才进行裁剪
+            if im_bands > 1:# 创建填充数组
+                full_data = np.full((im_bands, block_size, block_size), fill_value, dtype=np.float32)
+            else:
+                full_data = np.full((block_size, block_size), fill_value, dtype=np.float32)
+            if read_width > 0 and read_height > 0:  
+                # 读取实际数据
+                if im_bands > 1:
+                    data = im_dataset.ReadAsArray(read_x, read_y, read_width, read_height)
+                    # 计算在填充数组中的位置
+                    offset_x = read_x - x_start
+                    offset_y = read_y - y_start
+                    # 将数据放入填充数组
+                    for b in range(im_bands):
+                        full_data[b, offset_y:offset_y+read_height, offset_x:offset_x+read_width] = data[b]
+                else:
+                    data = im_dataset.GetRasterBand(1).ReadAsArray(read_x, read_y, read_width, read_height)
+                    offset_x = read_x - x_start
+                    offset_y = read_y - y_start
+                    full_data[offset_y:offset_y+read_height, offset_x:offset_x+read_width] = data
+        
+            # 计算新的地理变换
+            new_geotrans = list(im_geotrans)
+            new_geotrans[0] = im_geotrans[0] + x_start * im_geotrans[1]
+            new_geotrans[3] = im_geotrans[3] + y_start * im_geotrans[5]
+            
+            # 保存结果
+            idx += 1
+            out_path = os.path.join(out_dir, f"{out_tif_name}_{idx}.tif")
+            write_data_to_tif(out_path, full_data, new_geotrans, im_proj)
+            if value is not None:
+                out_dataset.append(f"{out_path} {value}")
+        pbar.update(1)
+        
+        # print(f"生成: {out_path} (有效区域: {read_width}x{read_height})")
+    if idx == 0:
+        raise RuntimeError(f'Did not find any valid points in the shapefile: {point_shp}')
+    shp_dataset = None
+    pbar.close()
+    if need_close:
+        im_dataset = None
+    return out_dataset
+
+def clip_by_multishp(out_dir, sr_img, point_shp_dir, block_size=30, out_tif_name='img', fill_value=0):
+    """
+    批量处理目录下多个Shapefile的裁剪任务，并自动生成记录样本块与标签的数据集
+    
+    参数:
+        out_dir (str): 输出目录路径
+        sr_img (str/gdal.Dataset): 输入影像路径或已打开的GDAL数据集对象  
+        point_shp_dir (str): 包含点Shapefiles的目录路径或者是一个Shapefile文件路径
+        block_size (int): 裁剪块大小（像素），默认30
+        out_tif_name (str): 输出文件名前缀，默认'img'
+        fill_value (int/float): 边缘填充值，默认0
+    
+    返回:
+        None
+    
+    异常:
+        RuntimeError: 当目录中没有Shapefile或裁剪失败时
+    """
+    if os.path.isdir(point_shp_dir):
+        point_shp_files = search_files_in_directory(point_shp_dir, extension='.shp')
+        if not point_shp_files:
+            raise RuntimeError(f'Not shapefiles found in directory: {point_shp_dir}')
+        all_out_datasets = []
+        for idx, point_shp in enumerate(point_shp_files):
+            out_dataset = clip_by_shp(out_dir, sr_img, point_shp, block_size, out_tif_name=f'{out_tif_name}_label{idx}', fill_value=fill_value, value=idx)
+            all_out_datasets.extend(out_dataset)
+        if not all_out_datasets:
+            pass
+        else:
+            dataset_path = os.path.join(out_dir, '.datasets.txt')
+            write_list_to_txt(all_out_datasets, dataset_path)
+            print(f'dataset file saved to: {dataset_path}')
+    elif os.path.isfile(point_shp_dir):
+        print('single shape file dont need to write dataset file')
+        out_dataset = clip_by_shp(out_dir, sr_img, point_shp, block_size, out_tif_name=out_tif_name, fill_value=fill_value)
+    else:
+        raise RuntimeError(f'Invalid point_shp_dir: {point_shp_dir}, it should be a directory or a shapefile path')
 if __name__ == '__main__':
-    point_value_merge(r'D:\Data\Hgy\龚鑫涛试验数据\program_data\cluster\research1_gmm24_optimization2 - 副本.shp', [13,23])
+    # point_value_merge(r'D:\Data\Hgy\龚鑫涛试验数据\program_data\cluster\research1_gmm24_optimization2 - 副本.shp', [13,23])
+
+    clip_by_multishp(r'd:\Data\Hgy\龚鑫涛试验数据\program_data\cluster\test', r'D:\Data\Hgy\龚鑫涛试验数据\Image\research_GF5.dat', 
+                r'd:\Data\Hgy\龚鑫涛试验数据\program_data\cluster\research_GF5_samples_2', 17)

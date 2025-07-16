@@ -8,7 +8,7 @@ try:
 except ImportError:
     print('gdal is not used')
 from tqdm import tqdm
-from utils import rewrite_paths_info
+from utils import read_dataset_from_txt
 def read_tif_with_gdal(tif_path):
     '''读取栅格原始数据
     返回dataset[bands,H,W]'''
@@ -21,7 +21,7 @@ def read_tif_with_gdal(tif_path):
 def load_dataset_from_txt(txt_path):
     data = []
     labels = []
-    dataset_list = rewrite_paths_info(txt_path)
+    dataset_list = read_dataset_from_txt(txt_path)
     for line in tqdm(dataset_list, total=len(dataset_list), desc="Loading data"):
         path, label = line.strip().split()
         spectrum = read_tif_with_gdal(path).squeeze()  # (bands,)

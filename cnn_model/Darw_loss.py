@@ -48,7 +48,11 @@ def find_target_from_log(log_file_path, find_target='Accuracy: '):
 def plot_line(*args, title='Accuracy Curve', labels=None, save_path=None):
     '''画图示意'''
     plt.figure(figsize=(8, 6), dpi=125)
-    plt.style.use('seaborn-v0_8') # 使用seaborn风格
+    # 设置黑色边框
+    with plt.rc_context({'axes.edgecolor': 'black',
+                        'axes.linewidth': 1.5}):
+        ax = plt.gca()
+    # plt.style.use('seaborn-v0_8') # 使用seaborn风格
 
     # 自动生成默认标签
     if labels is None:
@@ -63,13 +67,12 @@ def plot_line(*args, title='Accuracy Curve', labels=None, save_path=None):
                  alpha=0.9,)
 
     # 坐标轴和网格美化
-    ax = plt.gca()
     # ax.set_facecolor(ACADEMIC_COLOR[0])  # 设置背景色
     ax.grid(True, 
             linestyle='--', 
             linewidth=0.5, 
-            alpha=0.6, 
-            color='gray')  # 网格线
+            alpha=0.8, 
+            color='black')  # 黑色虚线网格
     
     # 强制x轴为整数（因为epoch是整数）
     ax.xaxis.set_major_locator(MaxNLocator(integer=True))  
@@ -94,9 +97,87 @@ def plot_line(*args, title='Accuracy Curve', labels=None, save_path=None):
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
     plt.show()
 
+def plot_accuracy_curves(train_acc_list, val_acc_list, 
+                         model_names=None, 
+                         title='Training vs Validation Accuracy',
+                         save_path=None):
+    """
+    绘制多个模型的训练集和验证集准确率对比曲线
+    
+    参数:
+        train_acc_list (list): 各模型的训练准确率列表, 如 [model1_train, model2_train, ...]
+        val_acc_list (list): 各模型的验证准确率列表, 与train_acc_list顺序一致
+        model_names (list): 模型名称列表, 如 ['SARCN', '3D CNN', 'RF']
+        title (str): 图表标题
+        save_path (str): 图片保存路径
+    """
+    plt.figure(figsize=(10, 6), dpi=125)
+    plt.style.use('seaborn-v0_8')
+    
+    # 自动生成模型名称
+    if model_names is None:
+        model_names = [f'Model {i+1}' for i in range(len(train_acc_list))]
+    
+    # 先绘制所有训练集曲线，再绘制所有验证集曲线
+    lines = []  # 用于存储图例句柄
+    labels = []  # 用于存储图例标签
+    
+    # 1. 绘制训练集曲线（实线）
+    for i, train_acc in enumerate(train_acc_list):
+        color = DEEP_COLOR[i % len(DEEP_COLOR)]
+        line = plt.plot(train_acc, 
+                       color=color,
+                       linewidth=2,
+                       linestyle='-',
+                       alpha=0.9)
+        lines.append(line[0])
+        labels.append(f'{model_names[i]} (Train)')
+    
+    # 2. 绘制验证集曲线（虚线）
+    for i, val_acc in enumerate(val_acc_list):
+        color = DEEP_COLOR[i % len(DEEP_COLOR)]
+        line = plt.plot(val_acc, 
+                       color=color,
+                       linewidth=2,
+                       linestyle='--',
+                       alpha=0.9)
+        lines.append(line[0])
+        labels.append(f'{model_names[i]} (Val)')
+    
+    # 坐标轴和网格美化
+    ax = plt.gca()
+    ax.grid(True, linestyle='--', linewidth=0.5, alpha=0.6, color='gray')
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True))  # Epoch为整数
+    
+    # # 标注最高验证准确率
+    # for i, val_acc in enumerate(val_acc_list):
+    #     max_idx = np.argmax(val_acc)
+    #     plt.scatter(max_idx, val_acc[max_idx], 
+    #                color=DEEP_COLOR[i % len(DEEP_COLOR)],
+    #                s=80, zorder=5, 
+    #                edgecolors='white', linewidths=1.5)
+    
+    # 标签和标题
+    plt.xlabel('Epoch', fontsize=12, labelpad=10)
+    plt.ylabel('Accuracy', fontsize=12, labelpad=10)
+    plt.title(title, fontsize=14, pad=20)
+    
+    plt.legend(lines, labels,
+               fontsize=10,
+               ncol=2,  # 每行显示模型数量
+               framealpha=1,
+               shadow=True,
+               edgecolor='white',)
+    
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    plt.show()
+
 if __name__=='__main__':
-    save_path = '3D_CNN_202506262008_loss.png'
-    log_file_path = r"C:\Users\85002\Desktop\GF5result\train_process\3D_CNN_202506262008.log"
-    train_accuracy,test_accuracy = find_target_from_log(log_file_path, find_target='Loss: ')
-    label = ['Train', 'Test']
-    plot_line(train_accuracy, test_accuracy, title="Accuracy Curve", labels=label, save_path=save_path)
+    save_path = 'Comparison.png'
+    log_file_path1 = r"C:\Users\85002\Desktop\GF5result\train_process\SSAR_15classes_graunfreeze_nopretrain_202506242120.log"
+    train_accuracy1,test_accuracy1 = find_target_from_log(log_file_path1, find_target='Accuracy: ')
+
+    title='Model Accuracy Comparison'
+    label = ['Train', 'Val']
+    plot_line(train_accuracy1, test_accuracy1, title="Accuracy Curve", labels=label, save_path=save_path)

@@ -8,14 +8,13 @@ from scipy.ndimage import gaussian_filter1d
 from sklearn.preprocessing import StandardScaler
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-from gdal_utils import nodata_value,mask_to_vector_gdal,vector_to_mask,write_data_to_tif,write_list_to_txt,face_vector_to_mask
+from gdal_utils import *
 from utils import save_matrix_to_csv
 import spectral as spy
 from skimage.segmentation import slic
 from utils import block_generator
 from algorithms import *
 from skimage.feature import graycomatrix, graycoprops
-from algorithms import spectral_complexity_pca
 
 gdal.UseExceptions()
 class Hyperspectral_Image:
@@ -52,10 +51,13 @@ class Hyperspectral_Image:
     def create_vector(self,mask,out_file):
         mask_to_vector_gdal(mask, self.dataset.GetGeoTransform(), self.dataset.GetProjection(),
                                    output_shapefile=out_file)
-        print(f'shp文件已保存：{out_file}')
-
+    def create_mutivector(self, mask_matrix, out_dir, out_dir_name):
+        mask_to_multivector(mask_matrix, self.dataset.GetGeoTransform(), self.dataset.GetProjection(),
+                            output_dir=out_dir, output_dir_name=out_dir_name)
     def create_mask(self, input_file):
         return vector_to_mask(input_file, self.dataset.GetGeoTransform(), self.rows, self.cols)
+    def create_mask_from_mutivector(self, inputdir):
+        return mutivetor_to_mask(inputdir, self.dataset.GetGeoTransform(), self.rows, self.cols)
 
     def init_fig_data(self):
         band = self.dataset.GetRasterBand(1)

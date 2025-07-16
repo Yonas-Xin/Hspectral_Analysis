@@ -3,7 +3,7 @@ base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(base_path)
 import torch
 from cnn_model.Models.Models import MODEL_DICT, DATASET_DICT
-from utils import rewrite_paths_info
+from utils import read_dataset_from_txt
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, cohen_kappa_score
@@ -45,15 +45,14 @@ if __name__ == '__main__':
     writer_name = '1DCNN.log'
     saved_model_name = r'D:\Programing\pythonProject\Hspectral_Analysis\cnn_model\_results\models_pth\SSAR_202506261846.pth'
     batch = 36 # batch
-    test_images_dir = r'd:\Data\Hgy\龚鑫涛试验数据\program_data\handle_class\clip_data_15classs_1x1\Aeval_datasets.txt'  # 测试数据集
+    test_images_dir = r'D:\Data\Hgy\龚鑫涛试验数据\program_data\handle_class\clip_test_dataset_1x1\.datasets.txt'  # 测试数据集
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # 显卡设置
     out_classes = 15 # 分类数
 
 
     out_embeddings = 24 # 模型初始化必要，后面打算把这个参数设置为固定值
-    print(f'Using num_workers: {dataloader_num_workers}')
     # 配置训练数据集和模型
-    test_image_lists = rewrite_paths_info(test_images_dir)
+    test_image_lists = read_dataset_from_txt(test_images_dir)
     eval_dataset = DATASET_DICT[model_name](test_image_lists)
     model = MODEL_DICT[model_name](out_embedding=out_embeddings, out_classes=out_classes, in_shape=eval_dataset.data_shape)  # 模型实例化
     model.load_state_dict(torch.load(saved_model_name, weights_only=True, map_location=device)['model'])

@@ -6,22 +6,22 @@ import torch.optim as optim
 from cnn_model.Models.Models import DATASET_DICT, MODEL_DICT
 from torch.optim.lr_scheduler import StepLR
 from cnn_model.Models.Frame import Cnn_Model_Frame
-from utils import rewrite_paths_info
+from utils import read_dataset_from_txt
 from torch.utils.data import DataLoader
 from multiprocessing import cpu_count
 import math
 
 if __name__ == '__main__':
-    model_name = "Shallow_1DCNN" # 使用model_name 与模型库模型匹配
+    model_name = "SRACN" # 使用model_name 与模型库模型匹配
     out_classes = 15 # 分类数
-    epochs = 3  # epoch
-    batch = 36 # batch
+    epochs = 100  # epoch
+    batch = 12 # batch
     init_lr = 1e-4  # lr
     min_lr = 1e-7  # 最低学习率
     GRAGUALLY_UNFRREZE = True
     pretrain_pth = r'C:\Users\85002\Desktop\模型\模型pth与log\Spe_Spa_Attenres110_retrain_202504281258.pth' # 迁移学习需要预训练模型
-    train_images_dir = r'd:\Data\Hgy\龚鑫涛试验数据\program_data\handle_class\clip_data_15classs_1x1\Atrain_datasets.txt'  # 训练数据集
-    test_images_dir = r'd:\Data\Hgy\龚鑫涛试验数据\program_data\handle_class\clip_data_15classs_1x1\Aeval_datasets.txt'  # 测试数据集
+    train_images_dir = r'd:\Data\Hgy\龚鑫涛试验数据\program_data\handle_class\clip_data_15classes\Atrain_datasets.txt'  # 训练数据集
+    test_images_dir = r'd:\Data\Hgy\龚鑫涛试验数据\program_data\handle_class\clip_data_15classes\Aeval_datasets.txt'  # 测试数据集
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # 显卡设置
     ck_pth = None # 用于断点学习
     load_from_ck = False  # 从断点处开始训练
@@ -34,8 +34,8 @@ if __name__ == '__main__':
     dataloader_num_workers = cpu_count() // 4 # 根据cpu核心数自动决定num_workers数量
     print(f'Using num_workers: {dataloader_num_workers}')
     # 配置训练数据集和模型
-    train_image_lists = rewrite_paths_info(train_images_dir) # 使用rewrite好点 
-    test_image_lists = rewrite_paths_info(test_images_dir)
+    train_image_lists = read_dataset_from_txt(train_images_dir) # 使用rewrite好点 
+    test_image_lists = read_dataset_from_txt(test_images_dir)
     try:
         train_dataset = DATASET_DICT[model_name](train_image_lists)
         eval_dataset = DATASET_DICT[model_name](test_image_lists)

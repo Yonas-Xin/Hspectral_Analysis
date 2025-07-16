@@ -3,6 +3,7 @@ import spectral as spy
 import numpy as np
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
+from scipy.linalg import pinv
 def noise_from_diffs(X, mask=None, direction='lowerright'):
 
     if direction.lower() not in ['lowerright', 'lowerleft', 'right', 'lower']:
@@ -59,3 +60,56 @@ def spectral_complexity_pca(data):
     explained_var = pca.explained_variance_ratio_[0]
     complexity = 1 - explained_var
     return complexity
+
+def calculate_cosine_similarities(data):
+    """
+    计算每行数据与平均值的余弦相似度
+    
+    参数:
+        data: 二维numpy数组，形状为(nums, features)
+        
+    返回:
+        余弦相似度列表，长度为nums，取值范围[-1, 1]，1表示完全相同，-1表示完全相反
+    """
+    mean_vector = np.mean(data, axis=0)
+    dot_products = np.sum(data * mean_vector, axis=1)
+    data_norms = np.sqrt(np.sum(data**2, axis=1))
+    mean_norm = np.sqrt(np.sum(mean_vector**2))
+    cosine_similarities = np.divide(
+        dot_products,
+        data_norms * mean_norm,
+        out=np.zeros_like(dot_products, dtype=float),
+        where=(data_norms * mean_norm) != 0
+    )
+    return cosine_similarities
+
+def calculate_mahalanobis_distances(data):
+    """
+    计算每行数据与平均值的马氏距离
+    
+    参数:
+        data: 二维numpy数组，形状为(nums, features)
+        
+    返回:
+        马氏距离数组，长度为nums
+    """
+    mean_vector = np.mean(data, axis=0)
+    cov_matrix = np.cov(data, rowvar=False)
+    inv_cov_matrix = pinv(cov_matrix)  # 使用伪逆代替常规逆
+    diff = data - mean_vector
+    mahalanobis_dist = np.sqrt(np.sum(diff @ inv_cov_matrix * diff, axis=1))
+    return mahalanobis_dist
+
+def calculate_euclidean_distances(data):
+    """
+    计算每行数据与平均值的欧式距离
+    
+    参数:
+        data: 二维numpy数组，形状为(nums, features)
+        
+    返回:
+        欧式距离列表，长度为nums
+    """
+    mean_values = np.mean(data, axis=0)
+    distances = np.sqrt(np.sum((data - mean_values)**2, axis=1)) 
+    return distances  # 转换为列表返回

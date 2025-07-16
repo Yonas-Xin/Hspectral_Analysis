@@ -63,7 +63,7 @@ def write_list_to_txt(data, filename):
         for item in data:
             file.write(f"{item}\n")  # 每个元素后加上换行符
         file.flush()
-def rewrite_paths_info(txt_file):
+def read_dataset_from_txt(txt_file):
     'txt文件绝对地址'
     parent_dir = os.path.dirname(txt_file)
     paths = read_txt_to_list(txt_file)

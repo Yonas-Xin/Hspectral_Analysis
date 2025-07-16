@@ -49,14 +49,16 @@ class Cnn_Model_Frame:
     
     def clean_up(self):
         """清理日志文件和tensorboard目录"""
-        if os.path.exists(self.log_path):
-            self.log_writer.close()  # 确保日志文件被正确关闭
-            os.remove(self.log_path)
-            print(f"Log file {self.log_path} has been removed.")
-        if os.path.exists(self.tensorboard_dir):
-            self.writer.close()  # 确保TensorBoard writer被正确关闭
-            shutil.rmtree(self.tensorboard_dir)
-            print(f"TensorBoard directory {self.tensorboard_dir} has been removed.")
+        if not os.path.exists(self.model_path):
+            if os.path.exists(self.log_path):
+                self.log_writer.close()  # 确保日志文件被正确关闭
+                os.remove(self.log_path)
+                print(f"Log file {self.log_path} has been removed.")
+            if os.path.exists(self.tensorboard_dir):
+                self.writer.close()  # 确保TensorBoard writer被正确关闭
+                shutil.rmtree(self.tensorboard_dir)
+                print(f"TensorBoard directory {self.tensorboard_dir} has been removed.")
+        else: pass
 
     def load_parameter(self, model, optimizer, scheduler=None, ck_pth=None, load_from_ck=False): # 加载模型、优化器、调度器
         self.full_cpu() # 打印配置信息
