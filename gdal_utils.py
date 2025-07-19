@@ -223,7 +223,7 @@ def vector_to_mask(shapefile, geotransform, rows, cols, value=None):
             if value is not None:
                 mask_matrix[row, col] = value
             # else:mask_matrix[row, col] = feature.GetField('class') + 1  # 如果没有指定值，则使用字段“class”值
-            else: mask_matrix[row, col] = 1
+            else: mask_matrix[row, col] = 1 # 默认点位置取值为1
     data_source = None
     return mask_matrix
 
@@ -543,7 +543,7 @@ def clip_by_shp(out_dir, sr_img, point_shp, block_size=30, out_tif_name='img', f
         
         # print(f"生成: {out_path} (有效区域: {read_width}x{read_height})")
     if idx == 0:
-        raise RuntimeError(f'Did not find any valid points in the shapefile: {point_shp}')
+        raise RuntimeError(f'Did not find any valid points in the shapefile: {point_shp}, please check that the image matches the vector range')
     shp_dataset = None
     pbar.close()
     if need_close:

@@ -10,7 +10,7 @@ from tqdm import tqdm
 from multiprocessing import cpu_count
 from torch.utils.tensorboard import SummaryWriter
 import torch
-from Models.loss import InfoNCELoss
+from contrastive_learning.Models.loss import InfoNCELoss
 from utils import save_matrix_to_csv
 
 class Contrastive_learning_frame:

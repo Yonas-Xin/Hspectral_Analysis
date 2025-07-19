@@ -19,4 +19,4 @@ if __name__ == '__main__':
     res = img.superpixel_sampling(n_segments=512, compactness=25, niters=2000, samples=samples, embedding_nums=embedding_nums,
                                   f=enhance_func, threshold=0)
     print(f'采样数量：{np.sum(res)}')
-    img.create_vector(res, out_shp) # 创建单个shp文件
+    img.create_vector(res, out_shp) # 创建单个shp文件，二维矩阵转点shp文件

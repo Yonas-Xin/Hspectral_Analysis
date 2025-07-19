@@ -256,7 +256,7 @@ def cal_threshold(arr, th=0.2):
 def process_split(args):
     '''孤立森林评分'''
     X, train_idx, test_idx = args
-    model = IsolationForest(contamination=0.05, random_state=42, n_jobs=1, n_estimators=100)
+    model = IsolationForest(contamination=0.1, random_state=42, n_jobs=1, n_estimators=100)
     model.fit(X[train_idx])
     return test_idx, model.decision_function(X) # 异常分数评分，分数越小越异常
 
@@ -278,7 +278,7 @@ def mccv_lf(X, test_size=0.2, n_splits=1000, n_jobs=-1):
         ))
     # 合并结果
     for test_idx, scores in results:
-        anomaly_scores += scores**2
+        anomaly_scores += scores
         # nums_list[test_idx] += 1
     anomaly_scores /= n_splits
     return anomaly_scores
@@ -304,9 +304,9 @@ def lf(data, contamination=0.2, useless=None):
     return preds
 
 input_img = r'C:\Users\85002\OneDrive - cugb.edu.cn\研究区地图数据\研究区影像数据\research_area1.dat'
-input_shp_dir = r'C:\Users\85002\Desktop\TempDIR\test2\test\20250711160911_Point_optimized3_optimized.shp'
-out_dir = r'c:\Users\85002\Desktop\TempDIR\test2'
-out_dir_name = 'RESEARCH_GF5'
+input_shp_dir = r'C:\Users\85002\Desktop\TempDIR\test2\RESEARCH_GF5 - 副本'
+# out_dir = r'c:\Users\85002\Desktop\TempDIR\test2'
+# out_dir_name = 'RESEARCH_GF5'
 
 embeddings = r'D:\Data\Hgy\research_clip_samples\embeddings.csv'
 func = "Mccv_LF" # 两个选项 Mccv_LF LF

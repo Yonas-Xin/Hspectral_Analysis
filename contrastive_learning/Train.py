@@ -2,7 +2,7 @@ import sys, os
 base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(base_path)
 from Models.Frame import Contrastive_learning_frame
-from contrastive_learning.Models.Data import SSF,SSF_3D,SSF_3D_H5
+from contrastive_learning.Models.Data import SSF,Dataset_3D,Dataset_3D_H5
 from torch.utils.data import DataLoader
 import torch
 import torch.optim as optim
@@ -30,7 +30,7 @@ if __name__ == '__main__':
 
     # 配置dataloader
     image_lists = read_txt_to_list(images_dir)
-    dataset = SSF_3D(image_lists)
+    dataset = Dataset_3D(image_lists)
     model = Spe_Spa_Attenres(out_embedding=24, in_shape=dataset.data_shape)  # 模型实例化
     print(f"Image shape: {dataset.data_shape}")
     optimizer = optim.Adam(model.parameters(), lr=init_lr)  # 优化器

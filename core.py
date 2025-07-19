@@ -294,11 +294,16 @@ class Hyperspectral_Image:
         return (out_labels>=th).astype(np.int8)
 
     def block_generator(self, block_size=256):
-        for i in range(0, self.rows, block_size):
-            for j in range(0, self.cols, block_size):
+        if isinstance(block_size, tuple):
+            rows, cols = block_size
+        elif isinstance(block_size, int):
+            rows = cols = block_data
+        else: raise ValueError('the input must be tuple or int')
+        for i in range(0, self.rows, rows):
+            for j in range(0, self.cols, cols):
                 # 计算当前块的实际高度和宽度（避免越界）
-                actual_rows = min(block_size, self.rows - i)
-                actual_cols = min(block_size, self.cols - j)
+                actual_rows = min(rows, self.rows - i)
+                actual_cols = min(cols, self.cols - j)
                 # 读取当前块的所有波段数据（形状: [bands, actual_rows, actual_cols]）
                 block_data = self.dataset.ReadAsArray(xoff=j, yoff=i, xsize=actual_cols, ysize=actual_rows)
                 if block_data.dtype == np.int16:

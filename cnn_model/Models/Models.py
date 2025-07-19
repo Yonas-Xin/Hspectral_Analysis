@@ -1,9 +1,9 @@
-from Models.Encoder import *
-from Models.Decoder import *
+from cnn_model.Models.Encoder import *
+from cnn_model.Models.Decoder import *
 import torch.nn as nn
 import torch.nn.functional as F
 import torch
-from Models.Data import Dataset_3D, Dataset_1D
+from cnn_model.Models.Data import Dataset_3D, Dataset_1D
 class Constrastive_learning_Model(nn.Module):
     def __init__(self, out_embedding=24, out_classes=8, in_shape=(138,17,17)):
         super().__init__()
@@ -73,14 +73,30 @@ class Shallow_1DCNN(nn.Module):
         x = self.encoder(x)
         x = self.decoder(x)
         return x
-    
+class Unet_3DCNN(nn.Module):
+    '''3D CNN UNet模型'''
+    def __init__(self, out_embedding=None, out_classes=8, in_shape=(138,17,17)):
+        super().__init__()
+        self.encoder = Unet_3DCNN_Encoder(out_embedding=out_embedding, in_shape=in_shape)  # 3D CNN UNet 编码器
+        self.decoder = deep_classfier(out_embedding, out_classes, mid_channels=4096)
+
+    def forward(self, x):
+        if x.dim() == 4:
+            x = x.unsqueeze(1)  # 增加一个维度到 [B, 1, C, H, W]
+        elif x.dim() != 5:
+            raise ValueError(f"Expected input dimension 4 or 5, but got {x.dim()}")
+        x = self.encoder(x)
+        x = self.decoder(x)
+        return x
 MODEL_DICT = {
     'SRACN':Constrastive_learning_Model,
     'Shallow_1DCNN':Shallow_1DCNN,
-    'Shallow_3DCNN':Shallow_3DCNN
+    'Shallow_3DCNN':Shallow_3DCNN,
+    'Unet_3DCNN':Unet_3DCNN
 }
 DATASET_DICT = {
     'SRACN':Dataset_3D,
     'Shallow_1DCNN':Dataset_1D,
-    'Shallow_3DCNN':Dataset_3D
+    'Shallow_3DCNN':Dataset_3D,
+    'Unet_3DCNN':Dataset_3D
 }

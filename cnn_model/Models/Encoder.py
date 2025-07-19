@@ -85,7 +85,69 @@ class Shallow_1DCNN_Encoder(nn.Module):
         x = self.conv4(self.conv3(x))
         x = self.pool3(x)         # [B, 128, 1]
         x = x.view(x.size(0), -1) # [B, 128]
-        return self.linear(x) 
+        return self.linear(x)
+    
+# class Unet_3DCNN_Encoder(nn.Module):
+#     def __init__(self, out_embedding=24, in_shape=(138,17,17)):
+#         super().__init__()
+#         bands, H, W = in_shape
+#         self.spectral_attention = ECA_SpectralAttention_3d(bands, 2,1)# 光谱注意力
+#         self.conv1_1 = Common_3d(1, 64, (3,3,3), (1,1,1), 1)
+#         self.conv1_2 = Common_3d(64, 64, (3,3,3), (1,1,1), 1)
+#         self.pool1 = nn.MaxPool3d(kernel_size=(2, 1, 1), stride=(2, 1, 1)) # 只针对光谱方向压缩
+#         self.conv1_1x1 = Common_3d(64, 128, (1,1,1), (0,0,0), 1)
+#         bands_1  = int(bands/2)
+
+#         self.conv2_1 = Common_3d(64, 128, (3,3,3), (1,1,1), 1)
+#         self.conv2_2 = Common_3d(128, 128, (3,3,3), (1,1,1), 1)
+#         self.pool2 = nn.MaxPool3d(kernel_size=(2, 1, 1), stride=(2, 1, 1))
+#         self.conv2_1x1 = Common_3d(128, 256, (1,1,1), (0,0,0), 1)
+#         bands_2 = int(bands_1/2)
+
+#         self.conv3_1 = Common_3d(128, 256, (3,3,3), (1,1,1), 1)
+#         self.conv3_2 = Common_3d(256, 256, (3,3,3), (1,1,1), 1)
+#         self.pool3 = nn.MaxPool3d(kernel_size=(2,1,1), stride=(2, 1, 1))
+#         self.conv3_1x1 = Common_3d(256, 512, (1,1,1), (0,0,0), 1)
+#         bands_3 = int(bands_2/2)
+
+#         self.conv4_1 = Common_3d(256, 512, (3,3,3), (1,1,1), 1)
+#         self.conv4_2 = Common_3d(512, 512, (3,3,3), (1,1,1), 1)
+#         self.pool4 = nn.MaxPool3d(kernel_size=(2,1,1), stride=(2, 1, 1))
+#         bands_4 = int(bands_3/2)
+
+#         self.conv5_1 = Common_3d(512, 256, (3,3,3), (1,1,1), 1)
+#         self.conv5_2 = Common_3d(256, 256, (3,3,3), (1,1,1), 1)
+#         self.pool5 = nn.MaxPool3d(kernel_size=(2,1,1), stride=(2, 1, 1))
+#         bands_5 = int((bands_4+bands_3)/2)
+
+#         self.conv6_1 = Common_3d(256, 128, (3,3,3), (1,1,1), 1)
+#         self.conv6_2 = Common_3d(128, 128, (3,3,3), (1,1,1), 1)
+#         self.pool6 = nn.MaxPool3d(kernel_size=(2,1,1), stride=(2, 1, 1))
+#         bands_6 = int((bands_5+bands_2)/2)
+
+#         self.conv7_1 = Common_3d(128, 64, (3,3,3), (1,1,1), 1)
+#         self.conv7_2 = Common_3d(64, 64, (3,3,3), (1,1,1), 1)
+#         self.avg_pool = nn.AvgPool3d(2) # 立方体压缩
+#         infeature = int(H/2)* int(W/2)* int((bands_6+bands_1)/2)
+#         self.linear = nn.Linear(infeature, out_features=out_embedding)
+#     def forward(self, x):
+#         x = self.spectral_attention(x)
+#         x1 = self.conv1_2(self.conv1_1(x))
+#         x1_out = self.conv1_1x1(x1) 
+#         x = self.pool1(x1)
+#         x1 = self.conv2_2(self.conv2_1(x))
+#         x2_out = self.conv2_1x1(x1)
+#         x = self.pool2(x1)
+#         x = self.conv3_2(self.conv3_1(x))
+#         x3_out = self.conv3_1x1(x)
+#         x = self.pool3(x)
+#         x = self.pool4(self.conv4_2(self.conv4_1(x)))
+#         x = self.pool5(self.conv5_2(self.conv5_1(torch.cat((x, x3_out), dim=2))))
+#         x = self.pool6(self.conv6_2(self.conv6_1(torch.cat((x, x2_out), dim=2))))
+#         x = self.avg_pool(self.conv7_2(self.conv7_1(torch.cat((x, x1_out), dim=2))))
+#         x = x.view(x.shape[0], -1)
+#         return self.linear(x)
+
 # =================================================================================================
 # 编码器组件
 # =================================================================================================
@@ -209,3 +271,78 @@ class Common_1d(nn.Module):
 
     def forward(self, x):
         return self.relu(self.batch_norm(self.conv(x)))
+    
+# ============3D CNN改进组件============
+class Spectral_Conv3d(nn.Module):
+    def __init__(self, in_channels, out_channels, input_shape, kernel_size=3, padding=1, stride=1):
+        super().__init__()
+        bands, h, w = input_shape
+        self.conv = nn.Conv1d(h*w*in_channels, h*w*out_channels, kernel_size=kernel_size, padding=padding, stride=stride)
+        self.batch_norm = nn.BatchNorm1d(h*w*out_channels)
+        self.relu = nn.ReLU(inplace=True)
+        self.out_channels = out_channels
+    def forward(self, x):
+        batch, channels, bands, h, w = x.shape
+        x = x.permute(0,1,3,4,2)  # 调整维度顺序到 [B, C, H, W, bands]
+        x = x.reshape(batch, channels * h * w, bands)  # 展平
+        x = self.relu(self.batch_norm(self.conv(x)))
+        x = x.reshape(batch, self.out_channels, h, w, -1)
+        return x.permute(0,1,4,2,3)
+
+class Spectral_Pool3d(nn.Module):
+    def __init__(self, kernel_size=2, stride=2):
+        super().__init__()
+        self.pool = nn.MaxPool1d(kernel_size=kernel_size, stride=stride)
+    def forward(self, x):
+        batch, channels, bands, h, w = x.shape
+        x = x.permute(0,1,3,4,2)  # 调整维度顺序到 [B, C, H, W, bands]
+        x = x.reshape(batch, channels * h * w, bands)  # 展平
+        x = self.pool(x)
+        x = x.reshape(batch, channels, h, w, -1)
+        return x.permute(0,1,4,2,3)
+class Unet_3DCNN_Encoder(nn.Module):
+    def __init__(self, out_embedding=128, in_shape=(138,17,17)):
+        super().__init__()
+        bands, H, W = in_shape
+        # self.spectral_attention = ECA_SpectralAttention_3d(bands, 2,1)# 光谱注意力
+        self.start_conv = Common_3d(1, 1, kernel_size=(3,3,3), padding=(1,1,1), stride=1)
+        self.conv1_1 = Spectral_Conv3d(1, 2, in_shape, 3, 1, 1)
+        self.conv1_2 = Spectral_Conv3d(2, 2, in_shape, 3, 1, 1)
+        self.pool1 = Spectral_Pool3d(kernel_size=2, stride=2) # 只针对光谱方向压缩
+        in_shape = (int(bands/2), H, W)
+
+        self.conv2_1 = Spectral_Conv3d(2, 4, in_shape, 3, 1, 1)
+        self.conv2_2 = Spectral_Conv3d(4, 4, in_shape, 3, 1, 1)
+        self.pool2 = Spectral_Pool3d(kernel_size=2, stride=2)
+        in_shape = (int(bands/4), H, W)
+
+        self.conv3_1 = Spectral_Conv3d(4, 8, in_shape, 3, 1, 1)
+        self.conv3_2 = Spectral_Conv3d(8, 8, in_shape, 3, 1, 1)
+        self.pool3 = Spectral_Pool3d(kernel_size=2, stride=2)
+        in_shape = (int(bands/8), H, W)
+
+        self.conv4_1 = Spectral_Conv3d(8, 16, in_shape, 3, 1, 1)
+        self.conv4_2 = Spectral_Conv3d(16, 16, in_shape, 3, 1, 1)
+        self.out_conv = Common_3d(16, 32, kernel_size=(3,3,3), padding=(1,1,1), stride=1)
+        self.pool4 = nn.AvgPool3d(kernel_size=2, stride=2)
+
+        in_feature = int(bands/16) * H//2 * W//2 * 32
+        self.linear = nn.Linear(in_feature, out_features=out_embedding)
+    def forward(self, x):
+        # x = self.spectral_attention(x)
+        x = self.start_conv(x)
+        x = self.pool1(self.conv1_2(self.conv1_1(x)))
+        x = self.pool2(self.conv2_2(self.conv2_1(x)))
+        x = self.pool3(self.conv3_2(self.conv3_1(x)))
+        x = self.pool4(self.out_conv(self.conv4_2(self.conv4_1(x))))
+        x = x.view(x.shape[0], -1)
+        return self.linear(x)
+    
+if __name__ == '__main__':
+    device = torch.device('cuda')
+    model = Unet_3DCNN_Encoder(24, in_shape=(290, 17, 17))
+    model.to(device)
+    x = torch.randn(1, 1, 290, 17, 17)
+    x = x.to(device)
+    out = model(x)
+    print(out.shape)
