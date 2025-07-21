@@ -42,6 +42,49 @@ class Constrastive_learning_Model(nn.Module):
                     param.requires_grad = True
                 print(f"[Epoch {epoch}] 解冻 encoder 模块: {name}")
 
+
+class Res_3D_18Net(nn.Module):
+    def __init__(self, out_embedding=1024, out_classes=8, in_shape=(138,17,17)):
+        super().__init__()
+        self.encoder = ResNet(block=Basic_Residual_block, layers=[2,2,2,2], num_classes=1024) # 3d卷积残差编码器
+        self.decoder = deep_classfier(1024, out_classes, mid_channels=4096)
+    def forward(self, x):
+        if x.dim() == 4:
+            x = x.unsqueeze(1)  # 增加一个维度到 [B, 1, C, H, W]
+        elif x.dim() != 5:
+            raise ValueError(f"Expected input dimension 4 or 5, but got {x.dim()}")
+        x = self.encoder(x)
+        x = self.decoder(x)
+        return x
+
+class Res_3D_34Net(nn.Module):
+    def __init__(self, out_embedding=1024, out_classes=8, in_shape=(138,17,17)):
+        super().__init__()
+        self.encoder = ResNet(block=Basic_Residual_block, layers=[3,4,6,3], num_classes=1024) # 3d卷积残差编码器
+        self.decoder = deep_classfier(1024, out_classes, mid_channels=4096)
+    def forward(self, x):
+        if x.dim() == 4:
+            x = x.unsqueeze(1)  # 增加一个维度到 [B, 1, C, H, W]
+        elif x.dim() != 5:
+            raise ValueError(f"Expected input dimension 4 or 5, but got {x.dim()}")
+        x = self.encoder(x)
+        x = self.decoder(x)
+        return x
+    
+class Res_3D_50Net(nn.Module):
+    def __init__(self, out_embedding=1024, out_classes=8, in_shape=(138,17,17)):
+        super().__init__()
+        self.encoder = ResNet(block=Bottleneck_Residual_block, layers=[3,4,6,3], num_classes=1024) # 3d卷积残差编码器
+        self.decoder = deep_classfier(1024, out_classes, mid_channels=4096)
+    def forward(self, x):
+        if x.dim() == 4:
+            x = x.unsqueeze(1)  # 增加一个维度到 [B, 1, C, H, W]
+        elif x.dim() != 5:
+            raise ValueError(f"Expected input dimension 4 or 5, but got {x.dim()}")
+        x = self.encoder(x)
+        x = self.decoder(x)
+        return x
+    
 class Shallow_3DCNN(nn.Module):
     '''浅层3D CNN模型'''
     def __init__(self, out_embedding=None, out_classes=8, in_shape=(138,17,17)):
@@ -73,6 +116,7 @@ class Shallow_1DCNN(nn.Module):
         x = self.encoder(x)
         x = self.decoder(x)
         return x
+
 class Unet_3DCNN(nn.Module):
     '''3D CNN UNet模型'''
     def __init__(self, out_embedding=None, out_classes=8, in_shape=(138,17,17)):
@@ -88,15 +132,18 @@ class Unet_3DCNN(nn.Module):
         x = self.encoder(x)
         x = self.decoder(x)
         return x
+
 MODEL_DICT = {
     'SRACN':Constrastive_learning_Model,
     'Shallow_1DCNN':Shallow_1DCNN,
     'Shallow_3DCNN':Shallow_3DCNN,
-    'Unet_3DCNN':Unet_3DCNN
+    "Res_3D_18Net": Res_3D_18Net,
+    "Res_3D_50Net": Res_3D_50Net
 }
 DATASET_DICT = {
     'SRACN':Dataset_3D,
     'Shallow_1DCNN':Dataset_1D,
     'Shallow_3DCNN':Dataset_3D,
-    'Unet_3DCNN':Dataset_3D
+    "Res_3D_18Net": Dataset_3D,
+    "Res_3D_50Net": Dataset_3D
 }

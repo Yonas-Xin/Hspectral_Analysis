@@ -2,6 +2,65 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch
 import math
+class ResNet(nn.Module):
+    def __init__(self, block, layers, num_classes=1024):
+        self.inplanes = 64
+        super(ResNet, self).__init__()
+        # 网络输入部分
+        self.conv1 = nn.Conv3d(1, 64, kernel_size=7, stride=(2,1,1), padding=3, bias=False)
+        self.bn1 = nn.BatchNorm3d(64)
+        self.relu = nn.ReLU(inplace=True)
+        self.maxpool = nn.MaxPool3d(kernel_size=3, stride=2, padding=1)
+        # 中间卷积部分
+        self.layer1 = self._make_layer(block, 64, layers[0])
+        self.layer2 = self._make_layer(block, 128, layers[1], stride=(2,1,1))
+        self.layer3 = self._make_layer(block, 256, layers[2], stride=(2,1,1))
+        self.layer4 = self._make_layer(block, 512, layers[3], stride=(2,1,1))
+        # 平均池化和全连接层
+        self.avgpool = nn.AdaptiveAvgPool3d((1,1,1))
+        self.fc = nn.Linear(512 * block.expansion, num_classes)
+ 
+        for m in self.modules():
+            if isinstance(m, nn.Conv3d):
+                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                m.weight.data.normal_(0, math.sqrt(2. / n))
+            elif isinstance(m, nn.BatchNorm3d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
+ 
+    def _make_layer(self, block, planes, blocks, stride=1):
+        downsample = None
+        if stride != 1 or self.inplanes != planes * block.expansion:
+            downsample = nn.Sequential(
+                nn.Conv3d(self.inplanes, planes * block.expansion,
+                          kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm3d(planes * block.expansion),
+            )
+ 
+        layers = []
+        layers.append(block(self.inplanes, planes, stride, downsample))
+        self.inplanes = planes * block.expansion
+        for i in range(1, blocks):
+            layers.append(block(self.inplanes, planes))
+ 
+        return nn.Sequential(*layers)
+ 
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.maxpool(x)
+ 
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        x = self.layer4(x)
+ 
+        x = self.avgpool(x)
+        x = x.view(x.size(0), -1)
+        x = self.fc(x)
+        return x
+
 class Spe_Spa_Attenres_Encoder(nn.Module):
     '''5个残差块和一个卷积块'''
     def __init__(self, out_embedding=24, in_shape=(138,17,17)):
@@ -86,67 +145,6 @@ class Shallow_1DCNN_Encoder(nn.Module):
         x = self.pool3(x)         # [B, 128, 1]
         x = x.view(x.size(0), -1) # [B, 128]
         return self.linear(x)
-    
-# class Unet_3DCNN_Encoder(nn.Module):
-#     def __init__(self, out_embedding=24, in_shape=(138,17,17)):
-#         super().__init__()
-#         bands, H, W = in_shape
-#         self.spectral_attention = ECA_SpectralAttention_3d(bands, 2,1)# 光谱注意力
-#         self.conv1_1 = Common_3d(1, 64, (3,3,3), (1,1,1), 1)
-#         self.conv1_2 = Common_3d(64, 64, (3,3,3), (1,1,1), 1)
-#         self.pool1 = nn.MaxPool3d(kernel_size=(2, 1, 1), stride=(2, 1, 1)) # 只针对光谱方向压缩
-#         self.conv1_1x1 = Common_3d(64, 128, (1,1,1), (0,0,0), 1)
-#         bands_1  = int(bands/2)
-
-#         self.conv2_1 = Common_3d(64, 128, (3,3,3), (1,1,1), 1)
-#         self.conv2_2 = Common_3d(128, 128, (3,3,3), (1,1,1), 1)
-#         self.pool2 = nn.MaxPool3d(kernel_size=(2, 1, 1), stride=(2, 1, 1))
-#         self.conv2_1x1 = Common_3d(128, 256, (1,1,1), (0,0,0), 1)
-#         bands_2 = int(bands_1/2)
-
-#         self.conv3_1 = Common_3d(128, 256, (3,3,3), (1,1,1), 1)
-#         self.conv3_2 = Common_3d(256, 256, (3,3,3), (1,1,1), 1)
-#         self.pool3 = nn.MaxPool3d(kernel_size=(2,1,1), stride=(2, 1, 1))
-#         self.conv3_1x1 = Common_3d(256, 512, (1,1,1), (0,0,0), 1)
-#         bands_3 = int(bands_2/2)
-
-#         self.conv4_1 = Common_3d(256, 512, (3,3,3), (1,1,1), 1)
-#         self.conv4_2 = Common_3d(512, 512, (3,3,3), (1,1,1), 1)
-#         self.pool4 = nn.MaxPool3d(kernel_size=(2,1,1), stride=(2, 1, 1))
-#         bands_4 = int(bands_3/2)
-
-#         self.conv5_1 = Common_3d(512, 256, (3,3,3), (1,1,1), 1)
-#         self.conv5_2 = Common_3d(256, 256, (3,3,3), (1,1,1), 1)
-#         self.pool5 = nn.MaxPool3d(kernel_size=(2,1,1), stride=(2, 1, 1))
-#         bands_5 = int((bands_4+bands_3)/2)
-
-#         self.conv6_1 = Common_3d(256, 128, (3,3,3), (1,1,1), 1)
-#         self.conv6_2 = Common_3d(128, 128, (3,3,3), (1,1,1), 1)
-#         self.pool6 = nn.MaxPool3d(kernel_size=(2,1,1), stride=(2, 1, 1))
-#         bands_6 = int((bands_5+bands_2)/2)
-
-#         self.conv7_1 = Common_3d(128, 64, (3,3,3), (1,1,1), 1)
-#         self.conv7_2 = Common_3d(64, 64, (3,3,3), (1,1,1), 1)
-#         self.avg_pool = nn.AvgPool3d(2) # 立方体压缩
-#         infeature = int(H/2)* int(W/2)* int((bands_6+bands_1)/2)
-#         self.linear = nn.Linear(infeature, out_features=out_embedding)
-#     def forward(self, x):
-#         x = self.spectral_attention(x)
-#         x1 = self.conv1_2(self.conv1_1(x))
-#         x1_out = self.conv1_1x1(x1) 
-#         x = self.pool1(x1)
-#         x1 = self.conv2_2(self.conv2_1(x))
-#         x2_out = self.conv2_1x1(x1)
-#         x = self.pool2(x1)
-#         x = self.conv3_2(self.conv3_1(x))
-#         x3_out = self.conv3_1x1(x)
-#         x = self.pool3(x)
-#         x = self.pool4(self.conv4_2(self.conv4_1(x)))
-#         x = self.pool5(self.conv5_2(self.conv5_1(torch.cat((x, x3_out), dim=2))))
-#         x = self.pool6(self.conv6_2(self.conv6_1(torch.cat((x, x2_out), dim=2))))
-#         x = self.avg_pool(self.conv7_2(self.conv7_1(torch.cat((x, x1_out), dim=2))))
-#         x = x.view(x.shape[0], -1)
-#         return self.linear(x)
 
 # =================================================================================================
 # 编码器组件
@@ -186,26 +184,77 @@ class Residual_block(nn.Module):
         if self.use_downsample:
             x = self.downsample(x)
         return self.relu(out+x)
-
-class SE_SpectralAttention_3d(nn.Module):
-    def __init__(self, bands):
-        super().__init__()
-        self.gap = nn.AdaptiveAvgPool3d((1, 1, bands))  # 压缩空间维度 (rows, cols) → (1, 1)
-        self.fc = nn.Sequential(
-            nn.Linear(bands, bands // 8),  # 降维减少计算量
-            nn.ReLU(),
-            nn.Linear(bands // 8, bands),  # 恢复原始维度
-            nn.Sigmoid()  # 输出 [0,1] 的权重
-        )
+ 
+class Basic_Residual_block(nn.Module):
+    """基础残差块"""
+    expansion = 1
+    def __init__(self, inplanes, planes, stride=1, downsample=None):
+        super(Basic_Residual_block, self).__init__()
+        self.conv1 = nn.Conv3d(inplanes, planes, kernel_size=3, stride=stride,
+                               padding=1, bias=False)
+        self.bn1 = nn.BatchNorm3d(planes)
+        self.relu = nn.ReLU(inplace=True)
+        self.conv2 = nn.Conv3d(planes, planes, kernel_size=3, stride=1,
+                               padding=1, bias=False)
+        self.bn2 = nn.BatchNorm3d(planes)
+        self.downsample = downsample   #对输入特征图大小进行减半处理
+        self.stride = stride
+ 
     def forward(self, x):
-        # x.shape: (batch, 1, rows, cols, bands)
-        batch, _, _, _, bands = x.shape
-        gap = self.gap(x)
-        gap = gap.view(batch, bands)
-        weights = self.fc(gap)
-        weights = weights.view(batch, 1, 1, 1, bands)
-        return x * weights
+        residual = x
+ 
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+ 
+        out = self.conv2(out)
+        out = self.bn2(out)
+ 
+        if self.downsample is not None:
+            residual = self.downsample(x)
+ 
+        out += residual
+        out = self.relu(out)
+        return out
 
+class Bottleneck_Residual_block(nn.Module):
+    """瓶颈残差块"""
+    expansion = 4
+ 
+    def __init__(self, inplanes, planes, stride=1, downsample=None):
+        super(Bottleneck_Residual_block, self).__init__()
+        self.conv1 = nn.Conv3d(inplanes, planes, kernel_size=1, bias=False)
+        self.bn1 = nn.BatchNorm3d(planes)
+        self.conv2 = nn.Conv3d(planes, planes, kernel_size=3, stride=stride,
+                               padding=1, bias=False)
+        self.bn2 = nn.BatchNorm3d(planes)
+        self.conv3 = nn.Conv3d(planes, planes * 4, kernel_size=1, bias=False)
+        self.bn3 = nn.BatchNorm3d(planes * 4)
+        self.relu = nn.ReLU(inplace=True)
+        self.downsample = downsample
+        self.stride = stride
+ 
+    def forward(self, x):
+        residual = x
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+ 
+        out = self.conv2(out)
+        out = self.bn2(out)
+        out = self.relu(out)
+ 
+        out = self.conv3(out)
+        out = self.bn3(out)
+ 
+        if self.downsample is not None:
+            residual = self.downsample(x)
+ 
+        out += residual
+        out = self.relu(out)
+        return out
+
+# ============ECA 光谱注意力组件============
 class ECA_SpectralAttention_3d(nn.Module):
     def __init__(self, bands,gamma=2,b=1):
         super().__init__()
@@ -227,38 +276,6 @@ class ECA_SpectralAttention_3d(nn.Module):
         # 恢复形状为 (batch,1,1,1,bands)
         attn_weights = attn_weights.view(batch, 1, bands, 1, 1)
         return x * attn_weights
-    
-# ============2D resnet组件============
-class Bottleneck(nn.Module):
-    expansion = 4  # 通道扩张倍率
-
-    def __init__(self, in_channels, mid_channels, stride=1, downsample=None):
-        super().__init__()
-        self.conv1 = nn.Conv2d(in_channels, mid_channels, kernel_size=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(mid_channels)
-
-        self.conv2 = nn.Conv2d(mid_channels, mid_channels, kernel_size=3, stride=stride, padding=1, bias=False)
-        self.bn2 = nn.BatchNorm2d(mid_channels)
-
-        self.conv3 = nn.Conv2d(mid_channels, mid_channels * self.expansion, kernel_size=1, bias=False)
-        self.bn3 = nn.BatchNorm2d(mid_channels * self.expansion)
-
-        self.relu = nn.ReLU(inplace=True)
-        self.downsample = downsample  # identity shortcut是否需要变换
-        self.stride = stride
-
-    def forward(self, x):
-        identity = x
-
-        out = self.relu(self.bn1(self.conv1(x)))
-        out = self.relu(self.bn2(self.conv2(out)))
-        out = self.bn3(self.conv3(out))
-
-        if self.downsample is not None:
-            identity = self.downsample(x)
-
-        out += identity
-        return self.relu(out)
 
 # ============1D CNN组件============
 class Common_1d(nn.Module):

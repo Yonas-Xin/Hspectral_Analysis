@@ -1,5 +1,5 @@
 import torch
-from cnn_model.Models.Encoder import Spe_Spa_Attenres_Encoder
+from cnn_model.Models.Encoder import *
 
 
 if __name__=='__main__':
