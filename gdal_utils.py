@@ -207,6 +207,10 @@ def vector_to_mask(shapefile, geotransform, rows, cols, value=None):
     if not data_source:
         raise RuntimeError(f"Failed to open shapefile: {shapefile}")
     layer = data_source.GetLayer()
+    field_idx = layer.FindFieldIndex('class', 1)
+    if field_idx != -1:
+        has_field_class = True
+    else: has_field_class = False
     spatial_ref = layer.GetSpatialRef()
     if spatial_ref is None:
         raise RuntimeError("No spatial reference found in shapefile")
@@ -223,7 +227,11 @@ def vector_to_mask(shapefile, geotransform, rows, cols, value=None):
             if value is not None:
                 mask_matrix[row, col] = value
             # else:mask_matrix[row, col] = feature.GetField('class') + 1  # 如果没有指定值，则使用字段“class”值
-            else: mask_matrix[row, col] = 1 # 默认点位置取值为1
+            else:
+                if has_field_class:
+                    class_value = feature.GetField('class')
+                    mask_matrix[row, col] = class_value + 1
+                else: mask_matrix[row, col] = 1 # 默认点位置取值为1
     data_source = None
     return mask_matrix
 
