@@ -1,7 +1,7 @@
 import sys, os
 base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(base_path)
-from Models.Frame import Contrastive_learning_frame
+from contrastive_learning.Models.EndToEnd_Frame import Contrastive_learning_frame
 from contrastive_learning.Models.Data import SSF,Dataset_3D,Dataset_3D_H5
 from torch.utils.data import DataLoader
 import torch

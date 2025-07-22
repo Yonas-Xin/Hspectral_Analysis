@@ -10,6 +10,7 @@ from tqdm import tqdm
 from multiprocessing import cpu_count
 from torch.utils.tensorboard import SummaryWriter
 import torch
+import traceback
 # from contrastive_learning.Models.loss import InfoNCELoss
 from utils import save_matrix_to_csv
 
@@ -50,29 +51,18 @@ class Contrastive_learning_frame:
         self.train_epoch_min_loss = 100
         self.start_epoch = 0
 
-        # 注册信号处理函数
-        signal.signal(signal.SIGINT, self.handle_interrupt)
-        signal.signal(signal.SIGTERM, self.handle_interrupt)
-
-    def handle_interrupt(self, signum, frame):
-        """处理中断信号的函数"""
-        print("\nInterrupt signal received. ")
-        if not os.path.exists(self.model_path):
-            print("Model was not saved. Attempting to clean up log files...")
-            self.clean_up()
-        exit(1)
-
     def clean_up(self):
         """清理日志文件和tensorboard目录"""
-        if os.path.exists(self.log_path):
-            self.log_writer.close()
-            os.remove(self.log_path)
-            print(f"Removed log file: {self.log_path}")
-        if os.path.exists(self.tensorboard_dir):
-            self.writer.close()
-            shutil.rmtree(self.tensorboard_dir)
-            print(f"Removed tensorboard directory: {self.tensorboard_dir}")
-
+        if not os.path.exists(self.model_path):
+            if os.path.exists(self.log_path):
+                self.log_writer.close()
+                os.remove(self.log_path)
+                print(f"Removed log file: {self.log_path}")
+            if os.path.exists(self.tensorboard_dir):
+                self.writer.close()
+                shutil.rmtree(self.tensorboard_dir)
+                print(f"Removed tensorboard directory: {self.tensorboard_dir}")
+        else: pass
     def load_parameter(self, model, optimizer, scheduler=None, ck_pth=None, load_from_ck=False): # 加载模型、优化器、调度器
         self.full_cpu() # 打印配置信息
         if ck_pth is not None:
@@ -161,20 +151,20 @@ class Contrastive_learning_frame:
                 else:
                     scheduler.step()
                 self.log_writer.flush()
-
-        except Exception as e:
-                self.clean_up()
-                print(f"Training interrupted due to: {str(e)}")
-                raise  # 重新抛出异常以便外部处理
-        
-        finally:
             result = f'Model saved at Epoch{model_save_epoch}. \nThe best training_loss:{self.train_epoch_min_loss}'
             self.log_writer.write(result + '\n')
+            print(result)
+        except KeyboardInterrupt: # 捕获键盘中断信号
+            print(f"Training interrupted due to: KeyboardInterrupt")
+            self.clean_up()
+        except Exception as e: 
+            print(traceback.format_exc())  # 打印完整的堆栈跟踪
+            self.clean_up()
+        finally:
             self.log_writer.close()
             self.writer.close()
             print("Training completed. Program exited.")
-            print(result)
-            os._exit(0) # 退出主程序
+            sys.exit(0)
     
 class Contrasive_learning_predict_frame:
     def __init__(self, device=None):

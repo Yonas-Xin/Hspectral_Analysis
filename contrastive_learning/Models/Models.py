@@ -63,18 +63,12 @@ class Moco3D(nn.Module): # 单GPU训练的Moco框架
         batch_size = keys.shape[0]
 
         ptr = int(self.queue_ptr)
-        # 计算可以替换的范围
-        if ptr + batch_size > self.K:
-            # 情况1：当前 batch 会超出队列尾部，分两段更新
-            remaining = self.K - ptr  # 队列剩余空间
-            self.queue[:, ptr:] = keys[:remaining].T  # 填充到队列末尾
-            self.queue[:, :batch_size - remaining] = keys[remaining:].T  # 剩余部分从头开始
-        else:
-            # 情况2：正常情况，直接替换
-            self.queue[:, ptr:ptr + batch_size] = keys.T
-        
-        # 更新指针（循环队列）
-        ptr = (ptr + batch_size) % self.K
+        assert self.K % batch_size == 0  # for simplicity
+
+        # replace the keys at ptr (dequeue and enqueue)
+        self.queue[:, ptr : ptr + batch_size] = keys.T
+        ptr = (ptr + batch_size) % self.K  # move pointer
+
         self.queue_ptr[0] = ptr
 
     def forward(self, input_q, input_k):

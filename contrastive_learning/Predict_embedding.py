@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 from contrastive_learning.Models.Models import Spe_Spa_Attenres
 from utils import read_txt_to_list, save_matrix_to_csv
 from tqdm import tqdm
-from contrastive_learning.Models.Frame import Contrasive_learning_predict_frame
+from contrastive_learning.Models.EndToEnd_Frame import Contrasive_learning_predict_frame
 
 if __name__ == '__main__':
     model_path = r'C:\Users\85002\Desktop\模型\模型pth与log\Spe_Spa_Attenres110_retrain_202504281258.pth'

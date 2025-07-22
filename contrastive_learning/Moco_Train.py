@@ -31,13 +31,12 @@ if __name__ == '__main__':
     # 配置dataloader
     image_lists = search_files_in_directory(images_dir, '.tif')
     dataset = Dataset_3D(image_lists)
-    model = Moco3D(out_embedding=24, in_shape=dataset.data_shape, K=512)  # 模型实例化
+    model = Moco3D(out_embedding=24, in_shape=dataset.data_shape, K=1024)  # 模型实例化
     print(f"Image shape: {dataset.data_shape}")
     optimizer = optim.Adam(model.parameters(), lr=init_lr)  # 优化器
     scheduler = StepLR(optimizer, step_size=10, gamma=0.1) # 学习率调度器
     augment = HighDimBatchAugment(crop_size=(17, 17))  # 数据特征转换
-    dataloader = DataLoader(dataset, batch_size=batch, shuffle=True, pin_memory=True, num_workers=2, prefetch_factor=2,
-                            persistent_workers=True)  # 数据迭代器
+    dataloader = DataLoader(dataset, batch_size=batch, shuffle=True, pin_memory=True, num_workers=2, drop_last=True)  # 数据迭代器
 
     frame = Contrastive_learning_frame(augment=augment, 
                                        model_name=config_model_name, 

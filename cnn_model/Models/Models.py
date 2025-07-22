@@ -46,7 +46,7 @@ class Constrastive_learning_Model(nn.Module):
 class Res_3D_18Net(nn.Module):
     def __init__(self, out_embedding=1024, out_classes=8, in_shape=(138,17,17)):
         super().__init__()
-        self.encoder = ResNet(block=Basic_Residual_block, layers=[2,2,2,2], num_classes=1024) # 3d卷积残差编码器
+        self.encoder = ResNet_3D(block=Basic_Residual_block, layers=[2,2,2,2], num_classes=1024) # 3d卷积残差编码器
         self.decoder = deep_classfier(1024, out_classes, mid_channels=4096)
     def forward(self, x):
         if x.dim() == 4:
@@ -60,7 +60,7 @@ class Res_3D_18Net(nn.Module):
 class Res_3D_34Net(nn.Module):
     def __init__(self, out_embedding=1024, out_classes=8, in_shape=(138,17,17)):
         super().__init__()
-        self.encoder = ResNet(block=Basic_Residual_block, layers=[3,4,6,3], num_classes=1024) # 3d卷积残差编码器
+        self.encoder = ResNet_3D(block=Basic_Residual_block, layers=[3,4,6,3], num_classes=1024) # 3d卷积残差编码器
         self.decoder = deep_classfier(1024, out_classes, mid_channels=4096)
     def forward(self, x):
         if x.dim() == 4:
@@ -74,7 +74,7 @@ class Res_3D_34Net(nn.Module):
 class Res_3D_50Net(nn.Module):
     def __init__(self, out_embedding=1024, out_classes=8, in_shape=(138,17,17)):
         super().__init__()
-        self.encoder = ResNet(block=Bottleneck_Residual_block, layers=[3,4,6,3], num_classes=1024) # 3d卷积残差编码器
+        self.encoder = ResNet_3D(block=Bottleneck_Residual_block, layers=[3,4,6,3], num_classes=1024) # 3d卷积残差编码器
         self.decoder = deep_classfier(1024, out_classes, mid_channels=4096)
     def forward(self, x):
         if x.dim() == 4:

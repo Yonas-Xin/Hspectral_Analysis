@@ -2,10 +2,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch
 import math
-class ResNet(nn.Module):
+class ResNet_3D(nn.Module):
     def __init__(self, block, layers, num_classes=1024):
         self.inplanes = 64
-        super(ResNet, self).__init__()
+        super(ResNet_3D, self).__init__()
         # 网络输入部分
         self.conv1 = nn.Conv3d(1, 64, kernel_size=7, stride=(2,1,1), padding=3, bias=False)
         self.bn1 = nn.BatchNorm3d(64)
