@@ -6,6 +6,7 @@ from cnn_model.Models.Models import Res_3D_18Net
 import torch
 
 class Spe_Spa_Attenres(nn.Module):
+    # 暂时是项目用的模型，不要删！！！
     def __init__(self, out_embedding=24, in_shape=(138,17,17)):
         super().__init__()  
         self.encoder = Spe_Spa_Attenres_Encoder(out_embedding=out_embedding, in_shape=in_shape)
@@ -115,7 +116,7 @@ class Moco3D(nn.Module): # 单GPU训练的Moco框架
         logits /= self.T
 
         # labels: positive key indicators
-        labels = torch.zeros(logits.shape[0], dtype=torch.long).cuda()
+        labels = torch.zeros(logits.shape[0], dtype=torch.long).to(input_q.device)
 
         # dequeue and enqueue
         self._dequeue_and_enqueue(k)

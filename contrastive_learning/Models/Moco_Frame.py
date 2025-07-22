@@ -41,7 +41,7 @@ class Moco_Frame:
             os.makedirs(log_dir)
         self.model_path = os.path.join(model_dir, f'{model_save_name}.pth')
         self.log_path = os.path.join(log_dir, f'{model_save_name}.log')
-        self.tensorboard_dir = os.path.join(self.parent_dir, f'tensorboard_logs\\logs_{model_save_name}')
+        self.tensorboard_dir = os.path.join(self.parent_dir, f'tensorboard_logs\\{model_save_name}')
 
         #配置训练信息
         self.if_full_cpu = if_full_cpu
@@ -58,7 +58,7 @@ class Moco_Frame:
         if self.if_full_cpu:
             torch.set_num_threads(cpu_num)
             print('Using cpu core num: ', cpu_num)
-        print(f'Cuda device count: {torch.cuda.device_count()} And the current device:{self.device}, Device ID: {torch.cuda.current_device()}')  # 显卡数
+        print(f'Cuda device count: {torch.cuda.device_count()} And the current device:{self.device}')  # 显卡数
 
 def clean_up(frame,log_writer,tensor_writer):
     """清理日志文件和tensorboard目录"""
@@ -153,7 +153,8 @@ def train(frame:Moco_Frame, model, optimizer, dataloader, scheduler=None, ck_pth
             if current_lr <= frame.min_lr:
                 pass
             else:
-                scheduler.step()
+                if scheduler is not None:
+                    scheduler.step()
             log_writer.flush()
         
         # 打印和记录结果

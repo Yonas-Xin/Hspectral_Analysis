@@ -37,7 +37,7 @@ if __name__ == '__main__':
     if step_size <= 0: # step太小,那么不设置调度器
         scheduler = None
     
-    augment = HighDimBatchAugment(crop_size=(17, 17))  # 数据特征转换
+    augment = HighDimBatchAugment(crop_size=(dataset.data_shape[1], dataset.data_shape[2]))  # 数据特征转换
     dataloader = DataLoader(dataset, batch_size=batch, shuffle=True, pin_memory=True, num_workers=dataloader_num_workers, drop_last=True)  # 数据迭代器
 
     frame = Moco_Frame(augment=augment, 

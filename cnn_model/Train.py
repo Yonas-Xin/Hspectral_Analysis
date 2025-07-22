@@ -5,17 +5,17 @@ import torch
 import torch.optim as optim
 from cnn_model.Models.Models import DATASET_DICT, MODEL_DICT
 from torch.optim.lr_scheduler import StepLR
-from cnn_model.Models.Frame import Cnn_Model_Frame
+from cnn_model.Models.Frame import Cnn_Model_Frame, train
 from utils import read_dataset_from_txt
 from torch.utils.data import DataLoader
 from multiprocessing import cpu_count
 import math
 
 if __name__ == '__main__':
-    model_name = "SRACN" # 使用model_name 与模型库模型匹配
+    model_name = "Shallow_3DCNN" # 使用model_name 与模型库模型匹配
     out_classes = 15 # 分类数
-    epochs = 100  # epoch
-    batch = 12 # batch
+    epochs = 1  # epoch
+    batch = 6 # batch
     init_lr = 1e-4  # lr
     min_lr = 1e-7  # 最低学习率
     GRAGUALLY_UNFRREZE = True
@@ -70,12 +70,11 @@ if __name__ == '__main__':
     frame = Cnn_Model_Frame(model_name=model_name, 
                             epochs=epochs, 
                             min_lr=min_lr,
-                            warmup_epochs=None,
                             device=device, 
                             if_full_cpu=if_full_cpu,
                             gradually_unfreeze=GRAGUALLY_UNFRREZE)
     
-    frame.train(model=model, 
+    train(frame=frame,model=model, 
                 optimizer=optimizer, 
                 scheduler=scheduler, 
                 train_dataloader=train_dataloader, 

@@ -62,6 +62,7 @@ class ResNet_3D(nn.Module):
         return x
 
 class Spe_Spa_Attenres_Encoder(nn.Module):
+    # 暂时是项目用的模型，不要删！！！
     '''5个残差块和一个卷积块'''
     def __init__(self, out_embedding=24, in_shape=(138,17,17)):
         super().__init__()
