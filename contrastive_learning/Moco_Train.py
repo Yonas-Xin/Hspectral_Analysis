@@ -21,7 +21,7 @@ if __name__ == '__main__':
     init_lr = 1e-4  # lr
     min_lr = 1e-7 # 最低学习率
     config_model_name = "Moco_Res18"  # 模型名称
-    images_dir = r'd:\Data\Hgy\research_handle' # 数据集
+    images_dir = r'c:\Users\85002\Desktop\TempDIR\ZY-01-Test\clip_by_shpfile' # 数据集
     ck_pth = r'D:\Programing\pythonProject\Hspectral_Analysis\contrastive_learning\_results\models_pth\Moco_Res18_202507221146.pth' # 保存的权重文件
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # 显卡设置
 
@@ -38,7 +38,8 @@ if __name__ == '__main__':
         scheduler = None
     
     augment = HighDimBatchAugment(crop_size=(dataset.data_shape[1], dataset.data_shape[2]))  # 数据特征转换
-    dataloader = DataLoader(dataset, batch_size=batch, shuffle=True, pin_memory=True, num_workers=dataloader_num_workers, drop_last=True)  # 数据迭代器
+    dataloader = DataLoader(dataset, batch_size=batch, shuffle=True, pin_memory=True, num_workers=dataloader_num_workers, 
+                            drop_last=True, persistent_workers=True)  # 数据迭代器
 
     frame = Moco_Frame(augment=augment, 
                        model_name=config_model_name, 

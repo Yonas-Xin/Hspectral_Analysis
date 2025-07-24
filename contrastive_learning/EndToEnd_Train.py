@@ -17,12 +17,12 @@ if __name__ == '__main__':
     clean_noise_samples = False # 是否掩膜噪声负样本
     if_full_cpu = True # 是否全负荷cpu
     load_from_ck = False # 从断点处开始训练
-    epochs = 1  # epoch
+    epochs = 10  # epoch
     batch = 4  # batch
     init_lr = 1e-4  # lr
     min_lr = 1e-7 # 最低学习率
     config_model_name = "Spe_Spa_Atten_pretrain"  # 模型名称
-    images_dir = r'd:\Data\Hgy\research_handle' # 数据集
+    images_dir = r'c:\Users\85002\Desktop\TempDIR\ZY-01-Test\clip_by_shpfile' # 数据集
     ck_pth = r'D:\Programing\pythonProject\Hyperspectral_Analysis\contrastive_learning\models\Spe_Spa_Atten_pretrain_202504252344.pth' # 保存的权重文件
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # 显卡设置
 
@@ -40,7 +40,8 @@ if __name__ == '__main__':
         scheduler = None
 
     augment = HighDimBatchAugment(crop_size=(dataset.data_shape[1], dataset.data_shape[2])) 
-    dataloader = DataLoader(dataset, batch_size=batch, shuffle=True, pin_memory=True, num_workers=dataloader_num_workers)  # 数据迭代器
+    dataloader = DataLoader(dataset, batch_size=batch, shuffle=True, pin_memory=True, num_workers=dataloader_num_workers,
+                            persistent_workers=True)  # 数据迭代器
 
     frame = EndToEnd_Frame(augment=augment, 
                                        model_name=config_model_name, 

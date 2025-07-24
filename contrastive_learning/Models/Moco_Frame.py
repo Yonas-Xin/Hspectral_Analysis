@@ -1,9 +1,7 @@
 import sys, os
 base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(base_path)
-import signal
 import shutil
-from pathlib import Path
 from datetime import datetime
 import time
 import torch.nn as nn
@@ -13,10 +11,10 @@ from torch.utils.tensorboard import SummaryWriter
 import torch
 import traceback
 # from contrastive_learning.Models.loss import InfoNCELoss
-from utils import save_matrix_to_csv
+from utils import AverageMeter, ProgressMeter, topk_accuracy
 
 class Moco_Frame:
-    '''配置训练参数与模型保存地址等'''
+    '''管理训练参数与训练配置'''
     def __init__(self, augment, model_name, min_lr=1e-7, epochs=300, device=None, if_full_cpu=True):
         self.augment = augment
         self.loss = nn.CrossEntropyLoss()
@@ -74,6 +72,7 @@ def clean_up(frame,log_writer,tensor_writer):
         else: pass
 
 def save_model(frame, model, optimizer, scheduler, epoch=None, avg_loss=None, avg_acc=None):
+    """注意：将需要迁移的部分使用 backbone 存储起来"""
     state = {
         'model': model.state_dict(),
         'optimizer': optimizer.state_dict(),
@@ -81,7 +80,8 @@ def save_model(frame, model, optimizer, scheduler, epoch=None, avg_loss=None, av
         'best_loss': avg_loss,
         'best_acc': avg_acc,
         'scheduler': scheduler.state_dict() if scheduler else None,
-        'current_lr': optimizer.param_groups[0]['lr']
+        'current_lr': optimizer.param_groups[0]['lr'],
+        'backbone': model.encoder_q.encoder.state_dict(),
     }
     torch.save(state, frame.model_path)
     print(f"============Checkpoint saved at epoch {epoch + 1}============")
@@ -118,57 +118,62 @@ def train(frame:Moco_Frame, model, optimizer, dataloader, scheduler=None, ck_pth
     
     model_save_epoch = 0
     max_iter_num = len(dataloader)
-    interval_printinfo = max_iter_num // 10 # 隔10次打印一次loss
-
+    interval_printinfo = max_iter_num // 10 # 每个epoch打印十次过程参数
+    loss_note = AverageMeter("Loss", ":.6f")
+    top1_acc_note = AverageMeter("Top1-Accuracy", ":.4f")
+    top5_acc_note = AverageMeter("Top5-Accuracy", ":.4f") 
+    Epoch_wirter = ProgressMeter(frame.epochs, len(dataloader), [loss_note, top1_acc_note, top5_acc_note], "\nBatch")
     # start training
     try:
         for epoch in range(frame.start_epoch, frame.epochs):
-            running_loss = 0.0
             for i,block in tqdm(enumerate(dataloader), total=len(dataloader), desc="Train", leave=True):
                 block = block.to(frame.device) # batch,C,H,W
+                batchs = block.size(0)
                 with torch.no_grad():
                     q = frame.augment(block)
                     k = frame.augment(block)
                 optimizer.zero_grad()  # 清空梯度
                 logits, label = model(q, k)
-
                 loss = frame.loss(logits, label)
+                acc1, acc5 = topk_accuracy(logits, label, topk=(1, 5))
+
+                loss_note.update(loss.item(), batchs)
+                top1_acc_note.update(acc1.item(), batchs)
+                top5_acc_note.update(acc5.item(), batchs)
                 loss.backward()  # 反向传播
                 optimizer.step()  # 更新权重
-                running_loss += loss.item()
                 if (i+1) % interval_printinfo == 0:
-                    print(f"\nStep: {i}, The current loss: {loss:.6f}, The Avgloss: {running_loss/(i+1):.6f}")
-            avg_loss = running_loss / len(dataloader)
+                    Epoch_wirter.display(i+1)
+
             current_lr = optimizer.param_groups[0]['lr']
-            result = f"Epoch-{epoch + 1} , Loss: {avg_loss:.8f}, Lr: {current_lr:.8f}"
-            log_writer.write(result + '\n') # 记录训练过程
-            tensor_writer.add_scalar('Train/Loss', avg_loss, epoch) # 记录到tensorboard
-            print(result)
-            if avg_loss >= frame.train_epoch_min_loss:  # 若当前epoch的loss大于等于之前最小的loss
+            epoch_summary = Epoch_wirter.epoch_summary(epoch+1, f"Lr:{current_lr:.8f}")
+            log_writer.write(epoch_summary + '\n') # 记录训练过程
+            tensor_writer.add_scalar('Train/Loss', loss_note.avg, epoch) # 记录到tensorboard
+            tensor_writer.add_scalar('Train/Top1', top1_acc_note.avg, epoch)
+            tensor_writer.add_scalar('Train/Top5', top5_acc_note.avg, epoch)
+            if loss_note.avg >= frame.train_epoch_min_loss:  # 若当前epoch的loss大于等于之前最小的loss
                 pass
             else:
-                frame.train_epoch_min_loss = avg_loss
+                frame.train_epoch_min_loss = loss_note.avg
                 model_save_epoch = epoch
-                save_model(frame=frame, model=model, optimizer=optimizer, scheduler=scheduler, epoch=epoch, avg_loss=avg_loss)
+                save_model(frame=frame, model=model, optimizer=optimizer, scheduler=scheduler, epoch=epoch, avg_loss=loss_note.avg)
             if current_lr <= frame.min_lr:
                 pass
             else:
                 if scheduler is not None:
                     scheduler.step()
+            loss_note.reset()
+            top1_acc_note.reset()
+            top5_acc_note.reset()
             log_writer.flush()
         
         # 打印和记录结果
         result = f'Model saved at Epoch{model_save_epoch}. \nThe best training_loss:{frame.train_epoch_min_loss}'
-        end_time = time.time()
-        total_seconds = end_time - start_time
-        hours = int(total_seconds // 3600)
-        minutes = int((total_seconds % 3600) // 60)
-        seconds = int(total_seconds % 60)
-        runtime = f'Program runtime: {hours}h {minutes}m {seconds}s'
+        run_time = cal_time(time.time() - start_time)
         log_writer.write(result + '\n')
-        log_writer.write(runtime + '\n')
+        log_writer.write("Program runtime:" + run_time + '\n')
         print(result)
-        print(runtime)
+        print(run_time)
     except KeyboardInterrupt: # 捕获键盘中断信号
         print(f"Training interrupted due to: KeyboardInterrupt")
         clean_up(frame=frame, log_writer=log_writer, tensor_writer=tensor_writer)
@@ -181,6 +186,12 @@ def train(frame:Moco_Frame, model, optimizer, dataloader, scheduler=None, ck_pth
         print(f"Training completed. Program exited.")
         sys.exit(0)
 
+def cal_time(seconds): # 计算时分秒
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    seconds = int(seconds % 60)
+    runtime = f'{hours}h {minutes}m {seconds}s'
+    return runtime
 
 class Contrasive_learning_predict_frame:
     def __init__(self, device=None):

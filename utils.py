@@ -2,6 +2,72 @@ import numpy as np
 import os
 import torch
 import matplotlib.colors as mcolors
+
+class AverageMeter:
+    """Computes and stores the average and current value"""
+
+    def __init__(self, name, fmt: str = ":f") -> None:
+        self.name = name
+        self.fmt = fmt
+        self.reset()
+
+    def reset(self) -> None:
+        self.val = 0
+        self.avg = 0
+        self.sum = 0
+        self.count = 0
+
+    def update(self, val, n: int = 1) -> None:
+        self.val = val
+        self.sum += val * n
+        self.count += n
+        self.avg = self.sum / self.count
+
+    def __str__(self) -> str:
+        fmtstr = "{name}: {val" + self.fmt + "} ({avg" + self.fmt + "})"
+        return fmtstr.format(**self.__dict__)
+
+
+class ProgressMeter:
+    def __init__(self, num_epochs, num_batches, meters, prefix: str = "") -> None:
+        self.epoch_fmtstr = self._get_batch_fmtstr(num_epochs)
+        self.batch_fmtstr = self._get_batch_fmtstr(num_batches)
+        self.meters = meters
+        self.prefix = prefix
+
+    def display(self, batch) -> None:
+        entries = [self.prefix + self.batch_fmtstr.format(batch)]
+        entries += [str(meter) for meter in self.meters]
+        print("\t".join(entries))
+    
+    def epoch_summary(self, epoch, other_str=""):
+        entries = ["Epoch" + self.epoch_fmtstr.format(epoch)]
+        entries += [str(meter) for meter in self.meters]
+        result = "\t".join(entries)+"\t"+other_str
+        print(result)
+        return result
+
+    def _get_batch_fmtstr(self, num_batches):
+        num_digits = len(str(num_batches // 1))
+        fmt = "{:" + str(num_digits) + "d}"
+        return "[" + fmt + "/" + fmt.format(num_batches) + "]"
+
+def topk_accuracy(output, target, topk=(1,)): # 计算Top-k准确率
+    """Computes the accuracy over the k top predictions for the specified values of k"""
+    with torch.no_grad():
+        maxk = max(topk)
+        batch_size = target.size(0)
+
+        _, pred = output.topk(maxk, 1, True, True)
+        pred = pred.t()
+        correct = pred.eq(target.view(1, -1).expand_as(pred))
+
+        res = []
+        for k in topk:
+            correct_k = correct[:k].reshape(-1).float().sum(0, keepdim=True)
+            res.append(correct_k.mul_(100.0 / batch_size))
+        return res
+
 def block_generator(data, block_size=256):
     '''迭代器，输入一个影像，返回分块的位置掩膜'''
     if data.ndim == 3:
