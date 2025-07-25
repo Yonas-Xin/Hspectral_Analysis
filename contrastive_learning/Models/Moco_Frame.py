@@ -38,12 +38,14 @@ class Moco_Frame:
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)
         self.model_path = os.path.join(model_dir, f'{model_save_name}.pth')
+        self.model_best_path = os.path.join(model_dir, f'{model_save_name}_best.pth')
         self.log_path = os.path.join(log_dir, f'{model_save_name}.log')
         self.tensorboard_dir = os.path.join(self.parent_dir, f'tensorboard_logs\\{model_save_name}')
 
         #配置训练信息
         self.if_full_cpu = if_full_cpu
         self.train_epoch_min_loss = 100
+        self.epoch_max_acc = -1
         self.start_epoch = 0
 
     def full_cpu(self):
@@ -71,7 +73,7 @@ def clean_up(frame,log_writer,tensor_writer):
             print(f"Removed tensorboard directory: {frame.tensorboard_dir}")
         else: pass
 
-def save_model(frame, model, optimizer, scheduler, epoch=None, avg_loss=None, avg_acc=None):
+def save_model(frame, model, optimizer, scheduler, epoch=None, avg_loss=None, avg_acc=None, is_best=False):
     """注意：将需要迁移的部分使用 backbone 存储起来"""
     state = {
         'model': model.state_dict(),
@@ -84,7 +86,9 @@ def save_model(frame, model, optimizer, scheduler, epoch=None, avg_loss=None, av
         'backbone': model.encoder_q.encoder.state_dict(),
     }
     torch.save(state, frame.model_path)
-    print(f"============Checkpoint saved at epoch {epoch + 1}============")
+    if is_best:
+        shutil.copyfile(frame.model_path, frame.model_best_path)
+        print(f"============The best checkpoint saved at epoch {epoch + 1}============")
 
 def load_parameter(frame, model, optimizer, scheduler=None, ck_pth=None, load_from_ck=False): # 加载模型、优化器、调度器
     frame.full_cpu() # 打印配置信息
@@ -93,6 +97,7 @@ def load_parameter(frame, model, optimizer, scheduler=None, ck_pth=None, load_fr
             checkpoint = torch.load(ck_pth, weights_only=True, map_location=frame.device)  # 加载断点
             model.load_state_dict(checkpoint['model'])
             frame.train_epoch_min_loss = checkpoint.get('best_loss', 100)
+            frame.epoch_max_acc = checkpoint.get('best_acc', -1)
             try:
                 optimizer.load_state_dict(checkpoint['optimizer']) # 恢复优化器
                 print('The optimizer state have been loaded!')
@@ -151,12 +156,20 @@ def train(frame:Moco_Frame, model, optimizer, dataloader, scheduler=None, ck_pth
             tensor_writer.add_scalar('Train/Loss', loss_note.avg, epoch) # 记录到tensorboard
             tensor_writer.add_scalar('Train/Top1', top1_acc_note.avg, epoch)
             tensor_writer.add_scalar('Train/Top5', top5_acc_note.avg, epoch)
-            if loss_note.avg >= frame.train_epoch_min_loss:  # 若当前epoch的loss大于等于之前最小的loss
-                pass
-            else:
+            is_best = False
+            if top1_acc_note.avg > frame.epoch_max_acc: # 使用top1准确率来保存模型
+                frame.epoch_max_acc = top1_acc_note.avg
                 frame.train_epoch_min_loss = loss_note.avg
                 model_save_epoch = epoch
-                save_model(frame=frame, model=model, optimizer=optimizer, scheduler=scheduler, epoch=epoch, avg_loss=loss_note.avg)
+                is_best = True
+            elif top1_acc_note.avg == frame.epoch_max_acc:
+                if loss_note.avg < frame.train_epoch_min_loss:
+                    frame.epoch_max_acc = top1_acc_note.avg
+                    frame.train_epoch_min_loss = loss_note.avg
+                    model_save_epoch = epoch
+                    is_best = True
+            save_model(frame=frame, model=model, optimizer=optimizer, scheduler=scheduler, 
+                       epoch=epoch, avg_loss=loss_note.avg, avg_acc=top1_acc_note.avg, is_best=is_best)
             if current_lr <= frame.min_lr:
                 pass
             else:
@@ -168,7 +181,7 @@ def train(frame:Moco_Frame, model, optimizer, dataloader, scheduler=None, ck_pth
             log_writer.flush()
         
         # 打印和记录结果
-        result = f'Model saved at Epoch{model_save_epoch}. \nThe best training_loss:{frame.train_epoch_min_loss}'
+        result = f'Model saved at Epoch{model_save_epoch}. \nThe best top1-acc:{frame.epoch_max_acc}. \nThe best training_loss:{frame.train_epoch_min_loss}'
         run_time = cal_time(time.time() - start_time)
         log_writer.write(result + '\n')
         log_writer.write("Program runtime:" + run_time + '\n')
