@@ -9,6 +9,8 @@ from torch.utils.tensorboard import SummaryWriter
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, cohen_kappa_score
 import torch
 import shutil
+from utils import AverageMeter, ProgressMeter, topk_accuracy
+import traceback
 
 class Cnn_Model_Frame:
     def __init__(self, model_name, min_lr=1e-7, epochs=300, device=None, if_full_cpu=True, gradually_unfreeze=True):
@@ -35,6 +37,7 @@ class Cnn_Model_Frame:
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)
         self.model_path = os.path.join(model_dir, f'{model_save_name}.pth')
+        self.model_best_path = os.path.join(model_dir, f'{model_save_name}_best.pth')
         self.log_path = os.path.join(log_dir, f'{model_save_name}.log')
         self.tensorboard_dir = os.path.join(self.parent_dir, f'tensorboard_logs\\{model_save_name}')
 
@@ -91,7 +94,7 @@ def load_parameter(frame, model, optimizer, scheduler=None, ck_pth=None, load_fr
                     print('The scheduler is incompatible')
             print(f"Loaded checkpoint from epoch {frame.start_epoch}, current lr {optimizer.param_groups[0]['lr']}")
 
-def save_model(frame, model, optimizer, scheduler, epoch=None, avg_loss=None, avg_acc=None):
+def save_model(frame, model, optimizer, scheduler, epoch=None, avg_loss=None, avg_acc=None, is_best = False):
     state = {
         'model': model.state_dict(),
         'optimizer': optimizer.state_dict(),
@@ -102,7 +105,9 @@ def save_model(frame, model, optimizer, scheduler, epoch=None, avg_loss=None, av
         'current_lr': optimizer.param_groups[0]['lr']
     }
     torch.save(state, frame.model_path)
-    print(f"============Checkpoint saved at epoch {epoch + 1}============")
+    if is_best:
+        shutil.copyfile(frame.model_path, frame.model_best_path)
+        print(f"============The best checkpoint saved at epoch {epoch + 1}============")
 
 def train(frame, model, optimizer, train_dataloader, eval_dataloader=None, scheduler=None, ck_pth=None, load_from_ck=False):
     log_writer = open(frame.log_path, 'w')
@@ -115,12 +120,16 @@ def train(frame, model, optimizer, train_dataloader, eval_dataloader=None, sched
     best_train_accuracy = 0
     best_test_accuracy = 0
     model_save_epoch = 0
+    train_loss_note = AverageMeter("Train-Loss", ":.6f")
+    train_acc_note = AverageMeter("Train-Acc", ":.4f")
+    test_loss_note = AverageMeter("Test-Loss", ":.6f")
+    test_acc_note = AverageMeter("Test-Acc", ":.4f")
+    progress_writer = ProgressMeter(frame.epochs, len(train_dataloader), 
+                                    [train_loss_note, train_acc_note, test_loss_note, test_acc_note],
+                                    prefix="Batch")
     try:
         for epoch in range(frame.start_epoch, frame.epochs):
             model.train()  # 开启训练模式，自训练没有测试模式，所以这个可以在训练之前设置
-            running_loss = 0.0
-            correct = 0
-            total_samples = 0
             if frame.GRAGUALLY_UNFRREZE: # 添加逐级解冻策略
                 try:
                     model.gradually_unfreeze_encoder_modules(epoch)
@@ -128,53 +137,60 @@ def train(frame, model, optimizer, train_dataloader, eval_dataloader=None, sched
                     print(f'The parameter unfreezing was unsuccessful:{e}')
                     pass
             for data, label in tqdm(train_dataloader, total=len(train_dataloader), desc="Training:", leave=True):
-                total_samples+=label.shape[0]
+                batchs = data.size(0)
                 data, label = data.to(frame.device), label.to(frame.device)
                 optimizer.zero_grad()
                 output = model(data)
                 loss = frame.loss_func(output, label)
+                acc = topk_accuracy(output, label)
+
+                train_loss_note.update(loss.item(), batchs)
+                train_acc_note.update(acc[0].item(), batchs)
                 loss.backward()
                 optimizer.step()
-                running_loss += loss.item()
-                _, predict = torch.max(output, 1)
-                correct += (predict == label).sum().item()
-            train_avg_loss = running_loss / len(train_dataloader)
-            train_accuracy = 100 * correct / total_samples
-            current_lr = optimizer.param_groups[0]['lr']
-            result = f"Epoch-{epoch + 1} , Loss: {train_avg_loss:.4f}, Accuracy: {train_accuracy:.2f}%, Lr: {current_lr:.8f}"
-            log_writer.write(result + '\n') # 记录训练过程
-            tensor_writer.add_scalars('Loss', {'Train': train_avg_loss}, epoch)
-            tensor_writer.add_scalars('Accuracy', {'Train': train_accuracy}, epoch)
-            print(result)
 
             if eval_dataloader is not None:
                 model.eval()
-                correct = 0
-                running_loss = 0.0
-                total_samples = 0
                 with torch.no_grad():
                     for data, label in tqdm(eval_dataloader, desc='Testing:', total=len(eval_dataloader), leave=True):
-                        total_samples += label.shape[0]
-                        data, label = data.to(frame.device).unsqueeze(1), label.to(frame.device)
+                        batchs = data.size(0)
+                        data, label = data.to(frame.device), label.to(frame.device)
                         output = model(data)
                         loss = frame.loss_func(output, label)
-                        running_loss += loss.item()
-                        _, predict = torch.max(output, 1)
-                        correct += (predict == label).sum().item()
-                    test_avg_loss = running_loss / len(eval_dataloader)
-                    test_accuracy = 100 * correct / total_samples
-                    result = f"Test_Loss: {test_avg_loss:.4f}, Accuracy: {test_accuracy:.2f}%"
-                    log_writer.write(result + '\n')  # 记录训练过程
-                    tensor_writer.add_scalars('Loss', {'Test': test_avg_loss}, epoch)
-                    tensor_writer.add_scalars('Accuracy', {'Test': test_accuracy}, epoch)
-                    print(result)
+                        acc = topk_accuracy(output, label)
+                        test_loss_note.update(loss.item(), batchs)
+                        test_acc_note.update(acc[0].item(), batchs)
+
+            test_accuracy = test_acc_note.avg
+            test_avg_loss = test_loss_note.avg
+            train_accuracy = train_acc_note.avg
+            train_avg_loss = train_loss_note.avg
+
+            current_lr = optimizer.param_groups[0]['lr']
+            if current_lr <= frame.min_lr:
+                pass
+            else:
+                if scheduler is not None:
+                    scheduler.step()
+            result = progress_writer.epoch_summary(epoch+1, f"Lr: {current_lr:.2e}")
+            tensor_writer.add_scalars('Loss', {'Train': train_avg_loss}, epoch)
+            tensor_writer.add_scalars('Accuracy', {'Train': train_accuracy}, epoch)
+            tensor_writer.add_scalars('Loss', {'Test': test_avg_loss}, epoch)
+            tensor_writer.add_scalars('Accuracy', {'Test': test_accuracy}, epoch)
+            log_writer.write(result + "\n")
+            log_writer.flush()
+            train_loss_note.reset()
+            train_acc_note.reset()
+            test_loss_note.reset()
+            test_acc_note.reset()
+            is_best = False
             if test_accuracy > frame.test_epoch_max_acc: # 使用测试集的预测准确率进行模型保存
                 frame.test_epoch_min_loss = test_avg_loss
                 frame.test_epoch_max_acc = test_accuracy
                 best_train_accuracy = train_accuracy
                 best_test_accuracy = test_accuracy
                 model_save_epoch = epoch
-                save_model(frame=frame, model=model, optimizer=optimizer, scheduler=scheduler, epoch=epoch, avg_loss=test_avg_loss, avg_acc=test_accuracy)
+                is_best = True
             elif test_accuracy == frame.test_epoch_max_acc:
                 if test_avg_loss < frame.test_epoch_min_loss:
                     frame.test_epoch_min_loss = test_avg_loss
@@ -182,25 +198,21 @@ def train(frame, model, optimizer, train_dataloader, eval_dataloader=None, sched
                     best_train_accuracy = train_accuracy
                     best_test_accuracy = test_accuracy
                     model_save_epoch = epoch
-                    save_model(frame=frame, model=model, optimizer=optimizer, scheduler=scheduler, epoch=epoch, avg_loss=test_avg_loss, avg_acc=test_accuracy)
-            else: pass
+                    is_best = True
+            save_model(frame=frame, model=model, optimizer=optimizer, scheduler=scheduler, epoch=epoch, 
+                       avg_loss=test_avg_loss, avg_acc=test_accuracy, is_best=is_best)
 
-            if current_lr <= frame.min_lr:
-                pass
-            else:
-                if scheduler is not None:
-                    scheduler.step()
-            log_writer.flush()
-        result = f'Model saved at Epoch{model_save_epoch}. \nThe best training_acc:{best_train_accuracy:.4f}%.\nThe best testing_acc:{best_test_accuracy:.4f}%'
-        log_writer.write(result + '\n')
-        print(result)
+
+        best_result = f'Model saved at Epoch{model_save_epoch}. \nThe best training_acc:{best_train_accuracy:.6f}%.\nThe best testing_acc:{best_test_accuracy:.6f}%'
+        log_writer.write(best_result + '\n')
+        print(best_result)
         if eval_dataloader is not None:
-            print_result_report(frame=frame, model=model, ck_pth=frame.model_path, eval_dataloader=eval_dataloader, log_writer=log_writer) # 训练完成打印报告
+            print_result_report(frame=frame, model=model, ck_pth=frame.model_best_path, eval_dataloader=eval_dataloader, log_writer=log_writer) # 训练完成打印报告
     except KeyboardInterrupt: # 捕获键盘中断信号
         print(f"Training interrupted due to: KeyboardInterrupt")
         clean_up(frame=frame, log_writer=log_writer, tensor_writer=tensor_writer)
     except Exception as e: 
-        print(f"Training interrupted due to: {str(e)}")
+        print(traceback.format_exc())  # 打印完整的堆栈跟踪
         clean_up(frame=frame, log_writer=log_writer, tensor_writer=tensor_writer)
     finally:
         log_writer.close() # 再次确保日志文件被正确关闭

@@ -489,8 +489,14 @@ class Hyperspectral_Image:
 
     def save_tif(self, filename, img_data):
         '''将（rows，cols， bands）的数据存为tif格式'''
-        write_data_to_tif(filename, img_data.transpose(2,0,1), self.dataset.GetGeoTransform(), self.dataset.GetProjection(),
+        if len(img_data.shape) == 3:
+            write_data_to_tif(filename, img_data.transpose(2,0,1), self.dataset.GetGeoTransform(), self.dataset.GetProjection(),
                           nodata_value=self.no_data)
+        elif len(img_data.shape) == 2:
+            write_data_to_tif(filename, img_data, self.dataset.GetGeoTransform(), self.dataset.GetProjection(),
+                nodata_value=self.no_data)
+        else:
+            raise ValueError("The input dims must be 2 or 3")
         return True
     
     def face_vector_to_mask(self, shp_file):

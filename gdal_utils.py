@@ -25,7 +25,16 @@ def write_data_to_tif(output_file, data, geotransform, projection, nodata_value=
     异常:
         IOError: 当文件创建失败时
     """
-    bands, rows, cols =data.shape
+    # 处理二维数组情况（单波段）
+    if len(data.shape) == 2:
+        rows, cols = data.shape
+        bands = 1
+        data = data.reshape((1, rows, cols))  # 转换为三维
+    elif len(data.shape) == 3:
+        bands, rows, cols = data.shape
+    else:
+        raise ValueError("输入数据必须是二维或三维数组")
+    
     if data.dtype == np.int16:
         dtype = gdal.GDT_Int16
     else:
