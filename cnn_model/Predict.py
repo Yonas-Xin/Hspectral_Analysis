@@ -1,3 +1,5 @@
+"""将大幅高光谱影像进行分块的滑窗预测，避免占用大量显存
+预测结果是一个二维矩阵，-1代表背景, 其余值代表预测的地物类别"""
 import sys, os
 base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(base_path)
@@ -9,63 +11,20 @@ import numpy as np
 import torch
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-from cnn_model.Models.Models import MODEL_DICT
-import matplotlib
+from cnn_model.Models.Models_New import MODEL_DICT
 from datetime import datetime
-import signal
+import traceback
 from multiprocessing import cpu_count
-matplotlib.use('Agg')  # 使用非GUI后端，彻底绕过tkinter
-
-class IS_Generator(Dataset):
-    '''构造用于1d+2d编码器的输入'''
-    def __init__(self, whole_space, whole_spectral, block_size=25):
-        '''将整幅图像裁剪成为适用于模型输入的数据集形式
-        whole_space[H,W,3]'''
-        _, self.rows, self.cols = whole_space.shape
-        self.block_size = block_size
-        if block_size % 2 == 0:
-            left_top = int(block_size / 2 - 1)
-            right_bottom = int(block_size / 2)
-        else:
-            left_top = int(block_size // 2)
-            right_bottom = int(block_size // 2)
-        self.whole_space = np.pad(whole_space, [(left_top, right_bottom), (left_top, right_bottom), (0, 0)], 'constant')
-        self.whole_spectral = whole_spectral
-
-    def __len__(self):
-        return self.rows*self.cols
-    def __getitem__(self, idx):
-        """
-        根据索引返回图像及其光谱
-        """
-        row = idx//self.cols
-        col = idx%self.cols # 根据索引生成二维索引
-        block, spectral = self.get_samples(row, col)
-
-        # 转换为 PyTorch 张量
-        block = torch.from_numpy(block).float()
-        spectral = torch.from_numpy(spectral).float()
-        return block, spectral
-
-    def get_samples(self,row,col):
-        block = self.whole_space[:, row:row + self.block_size, col:col + self.block_size]
-        spectral = self.whole_spectral[:, row, col:col+1]
-        return block,spectral
 
 class Block_Generator(Dataset):
     '''构造用于3D编码器的输入'''
     def __init__(self, data, block_size, backward_mask=None):
-        '''将整幅图像裁剪成为适用于模型输入的数据集形式
-        data[C,H,W]'''
+        """分块滑窗Dataset"""
         _, act_rows, act_cols = data.shape
         self.data = data
         self.block_size = block_size
-        if block_size % 2 == 0:
-            left_top = int(block_size / 2 - 1)
-            right_bottom = int(block_size / 2)
-        else:
-            left_top = int(block_size // 2)
-            right_bottom = int(block_size // 2)
+        left_top = int(block_size / 2 - 1) if block_size % 2 == 0 else int(block_size // 2)
+        right_bottom = int(block_size / 2) if block_size % 2 == 0 else int(block_size // 2)
         self.left_top = left_top
         self.right_bottom = right_bottom
         rows = act_rows - left_top - right_bottom
@@ -101,7 +60,8 @@ class Block_Generator(Dataset):
             block = block.squeeze()
         return block
 
-def save_img(img1, img2, outpath):
+def create_img(img1, img2, outpath):
+    """绘制原图和预测图对比图"""
     plt.figure(figsize=(12,6))
     plt.subplot(1,2,1)
     plt.imshow(img1)
@@ -112,40 +72,31 @@ def save_img(img1, img2, outpath):
     plt.axis('off')
     plt.savefig(outpath, bbox_inches='tight', dpi=300)
     plt.close()
-    
+
+def clean_up(output_dir):
+    if len(os.listdir(output_dir)) == 0:
+        print(f'the temp_dir {output_dir} has been deleted!')
+        os.rmdir(output_dir)
+
 if __name__ == '__main__':
-    model_name = "Shallow_1DCNN"
-    out_classes = 15
-    block_size = 1
-    batch = 256
-    input_data = r"D:\Data\Hgy\龚鑫涛试验数据\Image\research_GF5.dat"
+    model_name = "Res_3D_18Net"
+    out_classes = 8
+    block_size = 17
+    batch = 128
+    input_data = r"C:\Users\85002\OneDrive - cugb.edu.cn\研究区地图数据\研究区影像数据\research_area1.dat"
+    model_pth = 'D:\Programing\pythonProject\Hspectral_Analysis\cnn_model\_results\models_pth\Res_3D_18Net_202507291104.pth'  # 模型路径
+    csv_output_path = 'out.tif'
+
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-    model_pth = 'D:\Programing\pythonProject\Hspectral_Analysis\cnn_model\_results\models_pth\SSAR_202506261846.pth'  # 模型路径
-    csv_output_path = 'out.csv'
-
-
     dataloader_num_workers = cpu_count() // 4 # 根据cpu核心数自动决定num_workers数量
     data_shape = None
     model = None
     image_block_size = 512
-    out_embedding = 24
-    def interrupt_handler(signum, frame):
-        print("\nInterrupt signal received.")
-        clean_up()
-        exit(1)
-    def clean_up():
-        if len(os.listdir(output_dir)) == 0:
-            print(f'the temp_dir {output_dir} has been deleted!')
-            os.rmdir(output_dir)
-    signal.signal(signal.SIGINT, interrupt_handler)  # 注册中断信号处理函数
-    signal.signal(signal.SIGTERM, interrupt_handler)  # 注册终止信号处理函数
+    out_embedding = 1024
+    rgb_combine = (29,19,9) # 绘制图像时的rgb组合
 
-    if block_size % 2 == 0:
-        left_top = int(block_size / 2 - 1)
-        right_bottom = int(block_size / 2)
-    else:
-        left_top = int(block_size // 2)
-        right_bottom = int(block_size // 2)
+    left_top = int(block_size / 2 - 1) if block_size % 2 == 0 else int(block_size // 2)
+    right_bottom = int(block_size / 2) if block_size % 2 == 0 else int(block_size // 2)
     current_time = datetime.now().strftime("%Y%m%d%H%M")  # 记录系统时间
     output_dir = f'.\\cnn_model\\temp_dir\\{current_time}'
     if not os.path.exists(output_dir):
@@ -164,17 +115,19 @@ if __name__ == '__main__':
                     data_shape = dataset.image_shape
 
                 if model is None: # 进行模型的初始化和参数读取
-                    model = MODEL_DICT['model_name'](out_embedding=out_embedding, out_classes=out_classes, in_shape=data_shape) # 在这里进行模型初始化
+                    model = MODEL_DICT[model_name](out_embeddings=out_embedding, out_classes=out_classes) # 在这里进行模型初始化
                     if model_pth is not None:
                         dic = torch.load(model_pth, weights_only=True, map_location=device)['model']
                         model.load_state_dict(dic)
-                model.to(device)
-                model.eval()
+                        print("模型加载成功")
+                    else: raise ValueError("The model pth must be valid!")
 
                 predict_map = np.zeros((rows, cols), dtype=np.int16) - 1 # 初始化一个空的预测矩阵，-1代表背景值
-                if np.any(background_mask == True):
+                if np.any(background_mask == True): # 如果
+                    model.to(device)
+                    model.eval()
                     idx = 0
-                    dataloader = DataLoader(dataset, batch_size=batch, shuffle=False, pin_memory=True,num_workers=dataloader_num_workers,prefetch_factor=2)
+                    dataloader = DataLoader(dataset, batch_size=batch, shuffle=False, num_workers=dataloader_num_workers)
                     for data in tqdm(dataloader, total=len(dataloader), desc=f'Block{i}_{j}'):
                         batch = data.shape[0]
                         data = data.to(device)
@@ -184,13 +137,15 @@ if __name__ == '__main__':
                         idx += batch
                 predict_map[background_mask] = predict_data.cpu().numpy() if predict_data.device.type == 'cuda' else predict_data.numpy() # 将预测结果填入对应位置
                 predict_whole_map[i:i+rows, j:j+cols] = predict_map # 将预测结果填入整体预测矩阵
+                img.save_tif(predict_whole_map, csv_output_path) # 保存为tif文件
 
                 # 下面保存预测过程中的图像
                 map = utils.label_to_rgb(predict_map)
-                image = image_block[(29,19,9),left_top:left_top+rows,left_top:left_top+cols].transpose(1,2,0)
-                output_path = os.path.join(output_dir, f"block_{i}_{j}.png")
-                save_img(image, map, output_path)
+                image = image_block[rgb_combine,left_top:left_top+rows,left_top:left_top+cols].transpose(1,2,0)
+                output_path = os.path.join(output_dir, f"block{i}-{i+rows}_{j}-{j+cols}.png")
+                create_img(image, map, output_path)
+    except KeyboardInterrupt as k:
+        clean_up(output_dir)
     except Exception as e:
-        clean_up()
-        raise (e)
-    utils.save_matrix_to_csv(predict_whole_map, csv_output_path) # 保存为csv文件
+        clean_up(output_dir)
+        print(traceback.format_exc()) 

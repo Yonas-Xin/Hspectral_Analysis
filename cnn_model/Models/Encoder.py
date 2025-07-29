@@ -76,7 +76,7 @@ class Spe_Spa_Attenres_Encoder(nn.Module):
         self.res_block5 = Residual_block(512,512,(3,3,3),(1,1,1),1)
         self.avg_pool = nn.AvgPool3d(2) # 立方体压缩
         in_feature = int(bands/8)*int(H/8)*int(W/8)*512
-        self.linear = nn.Linear(in_feature, out_features=out_embedding)
+        self.fc = nn.Linear(in_feature, out_features=out_embedding)
     def forward(self, x):
         x = self.spectral_attention(x)
         x = self.conv_block(x)
@@ -86,7 +86,7 @@ class Spe_Spa_Attenres_Encoder(nn.Module):
         x = self.res_block4(x)
         x = self.avg_pool(self.res_block5(x))
         x = x.view(x.shape[0], -1)
-        return self.linear(x)
+        return self.fc(x)
     
     @property # 返回解冻计划
     def get_unfreeze_plan(self):
@@ -109,14 +109,14 @@ class Shallow_3DCNN_Encoder(nn.Module):
         self.conv4 = Common_3d(128, 128, kernel_size=(3,3,3), padding=(1,1,1))
         self.pool3 = nn.AvgPool3d(2)
         in_feature = int(bands/8)*int(H/8)*int(W/8)*128
-        self.linear = nn.Linear(in_feature, out_features=128)
+        self.fc = nn.Linear(in_feature, out_features=128)
     
     def forward(self, x):
         x = self.pool1(self.conv1(x))
         x = self.pool2(self.conv2_2(self.conv2_1(x)))
         x = self.pool3(self.conv4(self.conv3(x)))
         x = x.view(x.size(0), -1)
-        return self.linear(x)
+        return self.fc(x)
 
 class Shallow_1DCNN_Encoder(nn.Module):
     def __init__(self, in_shape=(138,)):
@@ -136,7 +136,7 @@ class Shallow_1DCNN_Encoder(nn.Module):
         self.pool3 = nn.AvgPool1d(2)
 
         in_feature = int(length/8) * 128
-        self.linear = nn.Linear(in_feature, 128)
+        self.fc = nn.Linear(in_feature, 128)
 
     def forward(self, x):
         # 输入尺寸 [B, 1, L]
@@ -145,7 +145,7 @@ class Shallow_1DCNN_Encoder(nn.Module):
         x = self.conv4(self.conv3(x))
         x = self.pool3(x)         # [B, 128, 1]
         x = x.view(x.size(0), -1) # [B, 128]
-        return self.linear(x)
+        return self.fc(x)
 
 # =================================================================================================
 # 编码器组件

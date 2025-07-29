@@ -348,14 +348,8 @@ class Hyperspectral_Image:
         save_matrix_to_csv(position_mask, os.path.join(filepath, '.sampling_position.csv')) # 保存采样位置矩阵
         geotransform = self.dataset.GetGeoTransform()
         projection = self.dataset.GetProjection()
-        # info_image_block = open(os.path.join(filepath, f'a_block_clip_size_{image_block}.txt'),'w') # 用来记录image_block信息，方便还原
-        # info_image_block.close()
-        if block_size % 2 == 0:  # 如果block_size是一偶数，以像素点为中心，左上角区域比右下角区域少一
-            left_top = int(block_size / 2 - 1)
-            right_bottom = int(block_size / 2)
-        else:
-            left_top = int(block_size // 2)
-            right_bottom = int(block_size // 2)
+        left_top = int(block_size / 2 - 1) if block_size % 2 == 0 else int(block_size // 2)
+        right_bottom = int(block_size / 2) if block_size % 2 == 0 else int(block_size // 2)
         num = 1
         pathlist = []
         add_labels = False
@@ -438,31 +432,20 @@ class Hyperspectral_Image:
 
     def block_images(self, image_block=256, block_size=30):
         """迭代器，返回分块数据和块的左上角坐标"""
-        if block_size % 2 == 0:  # 如果block_size是一偶数，以像素点为中心，左上角区域比右下角区域少一
-            left_top = int(block_size / 2 - 1)
-            right_bottom = int(block_size / 2)
-        else:
-            left_top = int(block_size // 2)
-            right_bottom = int(block_size // 2)
+        left_top = int(block_size / 2 - 1) if block_size % 2 == 0 else int(block_size // 2)
+        right_bottom = int(block_size / 2) if block_size % 2 == 0 else int(block_size // 2)
         for i in range(0, self.rows, image_block):
             for j in range(0, self.cols, image_block):
                 # 计算当前块的实际高度和宽度（避免越界）
                 actual_rows = min(image_block + block_size - 1, self.rows - i)  # 实际高
                 actual_cols = min(image_block + block_size - 1, self.cols - j)  # 实际宽
-                if (j - left_top) < 0:
-                    xoff = 0
-                    actual_cols -= left_top
-                    left_pad = left_top
-                else:
-                    xoff = j - left_top
-                    left_pad = 0
-                if (i - left_top) < 0:
-                    yoff = 0
-                    actual_rows -= left_top
-                    top_pad = left_top
-                else:
-                    yoff = i - left_top
-                    top_pad = 0
+                xoff = 0 if (j - left_top) < 0 else j - left_top
+                left_pad = left_top if (j - left_top) < 0 else 0
+                yoff = 0 if (i - left_top) < 0 else i - left_top
+                top_pad = left_top if (i - left_top) < 0 else 0
+                if (j - left_top) < 0: actual_cols -= left_top
+                if (i - left_top) < 0: actual_rows -= left_top
+                # 计算边缘pad
                 if actual_cols == (self.cols - j): # 如果实际宽度已经接近了最右边界
                     pad = actual_cols - image_block
                     right_pad = right_bottom - pad if pad >=0 else right_bottom
@@ -488,7 +471,7 @@ class Hyperspectral_Image:
                 yield block_data, block_sampling_mask, i, j
 
     def save_tif(self, filename, img_data):
-        '''将（rows，cols， bands）的数据存为tif格式'''
+        '''将(rows, cols,  bands)或(rows, cols)的数据存为tif格式, tif具有与img相同的投影信息'''
         if len(img_data.shape) == 3:
             write_data_to_tif(filename, img_data.transpose(2,0,1), self.dataset.GetGeoTransform(), self.dataset.GetProjection(),
                           nodata_value=self.no_data)

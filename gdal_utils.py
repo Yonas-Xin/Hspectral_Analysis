@@ -533,6 +533,8 @@ def clip_by_shp(out_dir, sr_img, point_shp, block_size=30, out_tif_name='img', f
                 # 读取实际数据
                 if im_bands > 1:
                     data = im_dataset.ReadAsArray(read_x, read_y, read_width, read_height)
+                    if data.dtype == np.int16:
+                        data = data.astype(np.float32) * 1e-4 # 如何data是int类型，进行放缩并转化为float32类型
                     # 计算在填充数组中的位置
                     offset_x = read_x - x_start
                     offset_y = read_y - y_start
@@ -541,6 +543,8 @@ def clip_by_shp(out_dir, sr_img, point_shp, block_size=30, out_tif_name='img', f
                         full_data[b, offset_y:offset_y+read_height, offset_x:offset_x+read_width] = data[b]
                 else:
                     data = im_dataset.GetRasterBand(1).ReadAsArray(read_x, read_y, read_width, read_height)
+                    if data.dtype == np.int16:
+                        data = data.astype(np.float32) * 1e-4 # 如何data是int类型，进行放缩并转化为float32类型
                     offset_x = read_x - x_start
                     offset_y = read_y - y_start
                     full_data[offset_y:offset_y+read_height, offset_x:offset_x+read_width] = data
