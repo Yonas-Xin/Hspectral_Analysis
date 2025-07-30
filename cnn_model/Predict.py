@@ -15,6 +15,8 @@ from cnn_model.Models.Models_New import MODEL_DICT
 from datetime import datetime
 import traceback
 from multiprocessing import cpu_count
+import matplotlib
+matplotlib.use('Agg')
 
 class Block_Generator(Dataset):
     '''构造用于3D编码器的输入'''
@@ -137,7 +139,7 @@ if __name__ == '__main__':
                         idx += batch
                 predict_map[background_mask] = predict_data.cpu().numpy() if predict_data.device.type == 'cuda' else predict_data.numpy() # 将预测结果填入对应位置
                 predict_whole_map[i:i+rows, j:j+cols] = predict_map # 将预测结果填入整体预测矩阵
-                img.save_tif(predict_whole_map, csv_output_path) # 保存为tif文件
+                img.save_tif(csv_output_path, predict_whole_map) # 保存为tif文件
 
                 # 下面保存预测过程中的图像
                 map = utils.label_to_rgb(predict_map)

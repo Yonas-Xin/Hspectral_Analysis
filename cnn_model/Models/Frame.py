@@ -30,16 +30,14 @@ class Cnn_Model_Frame:
         self.parent_dir = os.path.join(base_dir, '_results')  # 创建一个父目录保存训练结果
         if not os.path.exists(self.parent_dir):
             os.makedirs(self.parent_dir)
-        model_dir = os.path.join(self.parent_dir, 'models_pth')
-        log_dir = os.path.join(self.parent_dir, 'logs')
-        if not os.path.exists(model_dir):
-            os.makedirs(model_dir)
-        if not os.path.exists(log_dir):
-            os.makedirs(log_dir)
-        self.model_path = os.path.join(model_dir, f'{model_save_name}.pth')
-        self.model_best_path = os.path.join(model_dir, f'{model_save_name}_best.pth')
-        self.log_path = os.path.join(log_dir, f'{model_save_name}.log')
-        self.tensorboard_dir = os.path.join(self.parent_dir, f'tensorboard_logs\\{model_save_name}')
+        self.model_dir = os.path.join(self.parent_dir, model_save_name)
+        if not os.path.exists(self.model_dir):
+            os.makedirs(self.model_dir)
+            
+        self.model_path = os.path.join(self.model_dir, f'{model_save_name}.pth')
+        self.model_best_path = os.path.join(self.model_dir, f'{model_save_name}_best.pth')
+        self.log_path = os.path.join(self.model_dir, f'{model_save_name}.log')
+        self.tensorboard_dir = os.path.join(self.model_dir , f'tensorboard_logs')
 
         #配置训练信息
         self.if_full_cpu = if_full_cpu
@@ -60,17 +58,12 @@ class Cnn_Model_Frame:
             print('Using cpu core num: ', cpu_num)
         print(f'Cuda device count: {torch.cuda.device_count()} And the current device:{self.device}')  # 显卡数
 
-def clean_up(frame, log_writer, tensor_writer):
-    """清理日志文件和tensorboard目录"""
+def clean_up(frame):
+    """清理因终端或异常生成的文件"""
     if not os.path.exists(frame.model_path):
-        if os.path.exists(frame.log_path):
-            log_writer.close()  # 确保日志文件被正确关闭
-            os.remove(frame.log_path)
-            print(f"Log file {frame.log_path} has been removed.")
-        if os.path.exists(frame.tensorboard_dir):
-            tensor_writer.close()  # 确保TensorBoard writer被正确关闭
-            shutil.rmtree(frame.tensorboard_dir)
-            print(f"TensorBoard directory {frame.tensorboard_dir} has been removed.")
+        if os.path.exists(frame.model_dir):
+            shutil.rmtree(frame.model_dir)
+            print(f"Directory {frame.model_dir} has been removed.")
     else: pass
 
 def load_parameter(frame, model, optimizer, scheduler=None, ck_pth=None, load_from_ck=False): # 加载模型、优化器、调度器
@@ -210,10 +203,10 @@ def train(frame, model, optimizer, train_dataloader, eval_dataloader=None, sched
             print_result_report(frame=frame, model=model, ck_pth=frame.model_best_path, eval_dataloader=eval_dataloader, log_writer=log_writer) # 训练完成打印报告
     except KeyboardInterrupt: # 捕获键盘中断信号
         print(f"Training interrupted due to: KeyboardInterrupt")
-        clean_up(frame=frame, log_writer=log_writer, tensor_writer=tensor_writer)
+        clean_up(frame=frame)
     except Exception as e: 
         print(traceback.format_exc())  # 打印完整的堆栈跟踪
-        clean_up(frame=frame, log_writer=log_writer, tensor_writer=tensor_writer)
+        clean_up(frame=frame)
     finally:
         log_writer.close() # 再次确保日志文件被正确关闭
         tensor_writer.close()

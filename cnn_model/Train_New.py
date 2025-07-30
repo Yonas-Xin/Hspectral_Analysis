@@ -14,6 +14,7 @@ import math
 
 if __name__ == '__main__':
     model_name = "Res_3D_18Net" # 使用model_name 与模型库模型匹配
+    config_name = "TL" # 配置名称
     out_classes = 8 # 分类数
     epochs = 100 # epoch
     batch = 12 # batch
@@ -64,7 +65,7 @@ if __name__ == '__main__':
     eval_dataloader = DataLoader(eval_dataset, batch_size=batch, shuffle=True, pin_memory=True, 
                                  num_workers=dataloader_num_workers, prefetch_factor=2,persistent_workers=True)  # 数据迭代器
 
-    frame = Cnn_Model_Frame(model_name=model_name, 
+    frame = Cnn_Model_Frame(model_name=f'{model_name}-{config_name}', 
                             epochs=epochs, 
                             min_lr=min_lr,
                             device=device, 

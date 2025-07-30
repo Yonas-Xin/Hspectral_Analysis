@@ -107,40 +107,35 @@ def plot_confusion_matrix(matrix,
         # x轴标签向下的短线
         x = i + 0.5
         y_bottom = ax.get_ylim()[0]
-        ax.plot([x, x], [y_bottom, y_bottom + 0.185], color='black', linewidth=1.0, clip_on=False)
+        ax.plot([x, x], [y_bottom, y_bottom + 0.10], color='black', linewidth=1.0, clip_on=False)
 
         # y轴标签向左的短线
         y = i + 0.5
         x_left = ax.get_xlim()[0]
-        ax.plot([x_left - 0.15, x_left], [y, y], color='black', linewidth=1.0, clip_on=False)
+        ax.plot([x_left - 0.10, x_left], [y, y], color='black', linewidth=1.0, clip_on=False)
     plt.tight_layout()
 
     if save_path:
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
     plt.show()
 if __name__ == '__main__':
-    save_path = '3DCNN.png'
+    save_path = 'comfusion_matrix.png'
     percent_mode = 'precision'
     title = None
 
-    matrix = np.array([[39,  0,  3,  0,  2,  0,  1,  0,  2,  0,  3,  1,  0,  0,  0],
- [ 1, 19,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0],
- [ 5,  0, 11,  0,  0,  0,  0,  0,  2,  0,  0,  2,  0,  0,  0],
- [ 0,  0,  0, 17,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0],
- [ 3,  0,  0,  0, 20,  0,  0,  0,  5,  0,  0,  0,  0,  0,  0],
- [ 0,  0,  0,  0,  0, 37,  1,  0,  0,  0,  0,  2,  0,  0,  2],
- [ 0,  0,  1,  0,  1,  0, 22,  0,  1,  0,  0,  1,  0,  0,  0],
- [ 0,  0,  3,  0,  0,  0,  0, 17,  3,  0,  1,  2,  0,  0,  0],
- [ 1,  0,  1,  0,  4,  0,  1,  5, 38,  2,  3,  0,  0,  0,  0],
- [ 0,  0,  0,  0,  1,  0,  0,  2,  2, 30,  1,  0,  0,  0,  0],
- [ 2,  0,  0,  0,  0,  0,  0,  4,  0,  1, 35,  2,  3,  0,  0],
- [ 3,  0,  3,  0,  0,  0,  0,  0,  0,  0,  0, 33,  1,  0,  3],
- [ 0,  0,  0,  0,  0,  0,  0,  1,  0,  0,  3,  0, 31,  4,  0],
- [ 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  2, 21,  0],
- [ 1,  0,  3,  0,  0,  1,  2,  0,  0,  0,  0,  4,  0,  0, 12]])
+    matrix = np.array(
+[[132,   4,   1,   1,   0,   1,   0,   0],
+ [  1, 143,   4,   0,   0,   0,   0,   0],
+ [  1,   1,  53,   0,   0,   0,   0,   0],
+ [  2,   0,   0,  25,   0,   0,   0,   0],
+ [  3,   0,   1,   0,  21,   1,   0,   0],
+ [  0,   0,   0,   0,   0,  48,   2,   0],
+ [  0,   0,   0,   0,   0,   5,  78,   0],
+ [  0,   0,   0,   0,   0,   0,   0,  12]]
+ )
     plot_confusion_matrix(matrix=matrix, 
                           labels=None, 
-                          figsize=(10, 8), 
+                          figsize=(8, 8), 
                           cmap='YlOrBr',
                           save_path=save_path, 
                           percent_mode=percent_mode, 

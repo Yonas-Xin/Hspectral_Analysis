@@ -7,8 +7,8 @@ class deep_classfier(nn.Module):
         super().__init__()
         self.fc1 = nn.Linear(in_channels, mid_channels)
         # self.dropout = nn.Dropout(0.5)
-        self.fc2 = nn.Linear(mid_channels, in_channels)
-        self.fc3 = nn.Linear(in_channels, out_channels)
+        self.fc2 = nn.Linear(mid_channels, 128)
+        self.fc3 = nn.Linear(128, out_channels)
 
     def forward(self, x):
         x = F.relu(self.fc1(x),inplace=True)

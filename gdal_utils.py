@@ -66,6 +66,11 @@ def read_tif_with_gdal(tif_path):
         dataset = dataset.astype(np.float32) * 1e-4
     return dataset
 
+def read_ori_tif(tif_path):
+    dataset = gdal.Open(tif_path)
+    dataset = dataset.ReadAsArray()
+    return dataset
+
 def crop_image_by_mask(data, mask, geotransform, projection, filepath, block_size=30, name="Block_"):
     """
     根据 mask 的类别，裁剪影像为 30x30 的小块
