@@ -5,7 +5,7 @@ from typing import Tuple
 import random
 
 class RandomSpectralMask(nn.Module):
-    """随机掩膜每个空间位置50%的光谱波段"""
+    """随机掩膜每个像元光谱波段"""
     def __init__(self, mask_prob: float = 0.5, p: float = 0.5):
         super().__init__()
         self.mask_prob = mask_prob
@@ -23,27 +23,50 @@ class RandomSpectralMask(nn.Module):
         mask = (mask | batch_mask).float()
         return x * mask
 
+class BandDropout(nn.Module):
+    def __init__(self, p=0.2, drop_prob=0.5):
+        super().__init__()
+        # self.dropout = nn.Dropout3d(p)  # 3D Dropout
+        self.drop_prob = drop_prob
+        self.p = p
+
+    def forward(self, x):
+        """
+        输入: (batch, bands, H, W)
+        输出: (batch, bands, H, W)，部分波段被随机置零
+        """
+        if not self.training:
+            return x
+        batch_size = x.shape[0]
+        drop_mask = torch.rand(batch_size, 1, 1, 1, device=x.device) < self.drop_prob
+        band_mask = (torch.rand(x.shape[1], 1, 1, device=x.device) > self.p).float()
+        x = x * (drop_mask * band_mask + (~drop_mask))
+        return x
+
 class HighDimBatchAugment(nn.Module):
     """高维图像块（如高光谱[B,C,H,W]）的批量增强"""
     def __init__(
             self,
             crop_size: Tuple[int, int],
+            spectral_mask_prob: float,
+            band_dropout_prob:float,
             flip_prob: float = 0.5,
+            rotate_prob: float = 0.5,
+            add_gaussian_prob: float=0.5,
+            erase_prob: float = 0.5,
             rotate_degrees: float = 90.0,
             crop_scale: Tuple[float, float] = (0.8, 1.0),
             crop_ratio: Tuple[float, float] = (0.9, 1.1),
             noise_std: float = 0.01,
-            erase_prob: float = 0.5,
             erase_scale: Tuple[float, float] = (0.01, 0.3),
             erase_ratio: Tuple[float, float] = (0.4, 2.5),
-            spectral_mask_prob: float = 0.5,
-            spectral_mask_p: float = 0.5
-
+            spectral_mask_p: float = 0.75,
+            bands_dropout_p: float = 0.2,
     ):
         super().__init__()
         # 初始化增强操作
         self.flip = K.RandomHorizontalFlip(p=flip_prob)
-        self.rotate = K.RandomRotation(degrees=rotate_degrees, p=0.5)
+        self.rotate = K.RandomRotation(degrees=rotate_degrees, p=rotate_prob)
         self.crop = K.RandomResizedCrop(
             size=crop_size,
             scale=crop_scale,
@@ -51,13 +74,18 @@ class HighDimBatchAugment(nn.Module):
             resample='bilinear'
         )
         self.add_gaussian = K.RandomGaussianNoise(
-            mean=0.0, std=noise_std, p=0.5, same_on_batch=False
+            mean=0.0, std=noise_std, p=add_gaussian_prob, same_on_batch=False
         )
 
         self.erase = K.RandomErasing(
             p=erase_prob, scale=erase_scale, ratio=erase_ratio, value=0
         )
-        self.spectral_mask = RandomSpectralMask(mask_prob=spectral_mask_prob, p=spectral_mask_p)
+        if spectral_mask_prob > 0:
+            self.spectral_mask = RandomSpectralMask(mask_prob=spectral_mask_prob, p=spectral_mask_p)
+        else: self.spectral_mask = None
+        if band_dropout_prob > 0:
+            self.band_dropout = BandDropout(p = bands_dropout_p, drop_prob=band_dropout_prob)
+        else: self.band_dropout = None
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         输入: [B, C, H, W]
@@ -75,9 +103,12 @@ class HighDimBatchAugment(nn.Module):
         x = self.crop(x)  # 随机裁剪
         x = self.add_gaussian(x) # 随机添加高斯噪声
         x = self.erase(x) # 随机擦除
-        x = self.spectral_mask(x) # 光谱随机掩膜
+        if self.spectral_mask is not None:
+            x = self.spectral_mask(x) # 光谱随机掩膜\
+        if self.band_dropout is not None:
+            x = self.band_dropout(x) # 随机丢弃波段
         return x
-    
+
 if __name__ == "__main__":
     # 测试特征转换模块的功能
     from osgeo import gdal
@@ -103,7 +134,7 @@ if __name__ == "__main__":
             将列表划分为数据集,[batch, 1, H, w, bands]
             """
             self.image_paths = data_list
-            image = self.__getitem__(0)
+            image,_ = self.__getitem__(0)
             self.data_shape = image.shape
 
         def __len__(self):
@@ -111,17 +142,27 @@ if __name__ == "__main__":
         def __getitem__(self, idx):
             """
             根据索引返回图像及其标签
-            image（3，rows，cols）
+            image（1，C，H，W）
             """
-            image_path = self.image_paths[idx]
+            image_path, label = self.image_paths[idx].split()
+            label = np.array(label, dtype=np.int16)
             image = read_tif_with_gdal(image_path)
-            image = torch.from_numpy(image).float()
-            return image
+            label = torch.tensor(label, dtype=torch.long)
+            image = torch.tensor(image, dtype=torch.float32)
+            return image, label
+    
     def read_txt_to_list(filename):
         with open(filename, 'r') as file:
             # 逐行读取文件并去除末尾的换行符
             data = [line.strip() for line in file.readlines()]
         return data
+    def read_dataset_from_txt(txt_file):
+        'txt文件绝对地址'
+        parent_dir = os.path.dirname(txt_file)
+        paths = read_txt_to_list(txt_file)
+        x = [os.path.basename(i) for i in paths]
+        y = [os.path.join(parent_dir, i) for i in x]
+        return y
     def visualize_comparison(original_tensor, augmented_tensor, band_indices=(9, 19, 29)):
         """
         Improved visualization function for hyperspectral images
@@ -168,96 +209,72 @@ if __name__ == "__main__":
         
         plt.tight_layout()
         plt.show()
-    def plot_multiline(dataset, curve_types=None, save_path=None, 
-                    show_confidence=True):
-        """
-        优化后的多曲线绘图函数，支持曲线分类显示、置信区间和异常点标记
-        
-        参数:
-            dataset: 二维numpy数组 (n_curves, n_points)
-            curve_types: 一维numpy数组 (n_curves,)，值为0或1，标记曲线类型
-            title: 图表标题
-            save_path: 图片保存路径
-            show_confidence: 是否显示置信区间
-            show_points: 是否显示每个数据点
-            show_outliers: 是否标记异常点
-        """
-        # 设置颜色（类型0和类型1分别用不同颜色）
-        COLOR_TYPE0 = '#1f77b4'  # 蓝色
-        COLOR_TYPE1 = '#ff7f0e'  # 橙色
-        
-        plt.figure(figsize=(10, 6), dpi=125)
-        # 设置黑色边框
-        with plt.rc_context({'axes.edgecolor': 'black',
-                            'axes.linewidth': 1.5}):
-            ax = plt.gca()
-
-        # 分离保留和剔除的曲线
-        keep_mask = curve_types == 1
-        remove_mask = curve_types == -1
-        # 计算置信区间（仅基于保留样本）
-        if show_confidence and np.any(keep_mask):
-            valid_data = dataset[keep_mask]
-            mean = np.mean(valid_data, axis=0)
-            std = np.std(valid_data, axis=0)
-            upper_bound = mean + 1.96 * std
-            lower_bound = mean - 1.96 * std
+    def plot_multiline(dataset, save_path=None):
+            COLOR_TYPE0 = '#1f77b4'  # 蓝色
             
-            plt.fill_between(range(dataset.shape[1]), lower_bound, upper_bound,
-                            color=COLOR_TYPE0, alpha=0.2, 
-                            label='95% Confidence (Kept Samples)')
-        
-        # 检查曲线类型输入
-        if curve_types is None:
-            curve_types = np.zeros(dataset.shape[0], dtype=int)
-        else:
-            assert len(curve_types) == dataset.shape[0], "curve_types长度必须与dataset行数一致"
-            assert set(np.unique(curve_types)) <= {-1, 1}, "curve_types只能包含0和1"
-        # 绘制剔除的曲线
-        for i in np.where(remove_mask)[0]:
-            plt.plot(dataset[i], color=COLOR_TYPE1, alpha=0.6, linewidth=0.5, zorder=1, linestyle='--', label='Deleted samples')
-        # 绘制保留的曲线
-        for i in np.where(keep_mask)[0]:
-            plt.plot(dataset[i], color=COLOR_TYPE0, alpha=0.8, linewidth=0.5, zorder=2, linestyle='-', label='Saved samples')
-        # 坐标轴和网格美化
-        ax.grid(True, 
-                linestyle='--', 
-                linewidth=0.3, 
-                alpha=0.5, 
-                color='black')  # 黑色虚线网格
-        # ax.xaxis.set_major_locator(MaxNLocator(integer=True))  
-        # 添加图例（只显示每种类型一次）
-        handles, labels = plt.gca().get_legend_handles_labels()
-        by_label = dict(zip(labels, handles))  # 去重
-        plt.legend(by_label.values(), by_label.keys(), loc='best')
-        
-        if save_path:
-            count = 1
-            base_path = save_path
-            while os.path.exists(save_path):
-                save_path = base_path[:-4]+str(count)+'.png'
-                count+=1
-            plt.savefig(save_path, dpi=300, bbox_inches='tight', facecolor='white')
-            print(f'png file created:{save_path}')
-        plt.show()
+            plt.figure(figsize=(10, 6), dpi=125)
+            with plt.rc_context({'axes.edgecolor': 'black',
+                                'axes.linewidth': 1.5}):
+                ax = plt.gca()
+            
+            for i, curve in enumerate(dataset):
+                x = np.arange(len(curve))  # X 轴坐标（0, 1, 2, ...）
+                y = curve
+                # 找到所有 0 值的位置
+                zero_indices = np.where(y == 0)[0]
+                if i>1000:
+                    break
 
-    txt_file = r"D:\Data\Hgy\research_clip_samples\.datasets.txt"
-    dataset = read_txt_to_list(txt_file)
+                if len(zero_indices) == 0:
+                    plt.plot(x, y, color=COLOR_TYPE0, alpha=0.8, linewidth=0.5, zorder=2, linestyle='-', label='Saved samples')
+                    continue
+                start_idx = 0
+                for zero_idx in zero_indices:
+                    # 绘制当前段（从 start_idx 到 zero_idx-1）
+                    if start_idx < zero_idx:
+                        plt.plot(x[start_idx:zero_idx], y[start_idx:zero_idx], color=COLOR_TYPE0, alpha=0.8, 
+                                linewidth=0.5, zorder=2, linestyle='-', label='Saved samples')
+                    start_idx = zero_idx + 1  # 跳过 0 值
+                
+                # 绘制最后一段（最后一个 0 值之后的部分）
+                if start_idx < len(y):
+                    plt.plot(x[start_idx:], y[start_idx:], color=COLOR_TYPE0, alpha=0.8, 
+                            linewidth=0.5, zorder=2, linestyle='-', label='Saved samples')
+            ax.grid(True, 
+                    linestyle='--', 
+                    linewidth=0.3, 
+                    alpha=0.5, 
+                    color='black')  # 黑色虚线网格
+            
+            if save_path:
+                count = 1
+                base_path = save_path
+                while os.path.exists(save_path):
+                    save_path = base_path[:-4]+str(count)+'.png'
+                    count+=1
+                plt.savefig(save_path, dpi=300, bbox_inches='tight', facecolor='white')
+                print(f'png file created:{save_path}')
+            plt.show()
+
+    txt_file = r"C:\Users\85002\Desktop\TempDIR\ZY-01-Test\clip_by_shpfile\.datasets.txt"
+    dataset = read_dataset_from_txt(txt_file)
     dataset = Dataset_3D(dataset)
     dataloader = DataLoader(dataset, shuffle=False, batch_size=2)
     feature_transform = HighDimBatchAugment(crop_size=(17,17), )
     device = torch.device('cuda' if torch.cuda.is_available else 'cpu')
 
-    for imgs in dataloader:
+    for imgs, labels in dataloader:
         B, C, H, W = imgs.shape
         imgs = imgs.to(device)
         with torch.no_grad():
-            img_enhance = feature_transform.forward(imgs)
+            img_enhance = feature_transform.forward(imgs).cpu().numpy()
+            print(img_enhance.shape)
         # visualize_comparison(imgs[0], img_enhance[0])
         # visualize_comparison(imgs[1], img_enhance[1])
 
         imgs = imgs[0].cpu().numpy().transpose(1,2,0).reshape(-1, C)
-        img_enhance = img_enhance[0].cpu().numpy().transpose(1,2,0).reshape(-1, C)
-        curve_type = np.ones(imgs.shape[0])
-        plot_multiline(imgs, curve_types=curve_type, show_confidence=False)
-        plot_multiline(img_enhance, curve_types=curve_type, show_confidence=False)
+
+        img_enhance1 = img_enhance[0].transpose(1,2,0).reshape(-1, C)
+        img_enhance2 = img_enhance[1].transpose(1,2,0).reshape(-1, C)
+        plot_multiline(img_enhance1)
+        plot_multiline(img_enhance2)
