@@ -96,6 +96,42 @@ class Spe_Spa_Attenres_Encoder(nn.Module):
                          20:'linear'} # epoch为20时解冻线性层
         return UNFREEZE_PLAN
 
+class Spe_Spa_Attenres_Encoder_Fixed(nn.Module):
+    '''6个残差块和一个卷积块'''
+    def __init__(self, in_shape, out_embedding=1024):
+        super().__init__()
+        bands, H, W = in_shape
+        self.spectral_attention = ECA_SpectralAttention_3d(bands, 2, 1)# 光谱注意力
+        self.conv_block = Common_3d(1, 64, 7, 3, (2,1,1))
+        self.pool = nn.MaxPool3d(kernel_size=2, stride=2)
+        self.res_block1 = Residual_block(64, 64, (3,3,3), (1,1,1), 1)
+        self.res_block2 = Residual_block(64, 128, (3,3,3), (1,1,1), (2,1,1)) # stride=2
+        self.res_block3 = Residual_block(128, 128, (3,3,3), (1,1,1), 1)
+        self.res_block4 = Residual_block(128, 256, (3,3,3), (1,1,1), (2,1,1)) # stride=2
+        self.res_block5 = Residual_block(256, 256, (3,3,3), (1,1,1), 1)
+        self.res_block6 = Residual_block(256, 512, (3,3,3), (1,1,1), (2,1,1)) # stride=2
+        self.avg_pool = nn.AdaptiveAvgPool3d((1,1,1)) # 立方体压缩
+        self.fc = nn.Linear(512, out_features=out_embedding)
+    def forward(self, x):
+        x = self.spectral_attention(x)
+        x = self.conv_block(x)
+        x = self.res_block1(x)
+        x = self.res_block2(x)
+        x = self.res_block3(x)
+        x = self.res_block4(x)
+        x = self.res_block5(5)
+        x = self.avg_pool(self.res_block6(x))
+        x = x.view(x.shape[0], -1)
+        return self.fc(x)
+    
+    @property # 返回解冻计划
+    def get_unfreeze_plan(self):
+        UNFREEZE_PLAN = {80:'res_block4',
+                         60:'res_block5',
+                         40:'res_block6',
+                         20:'linear'} # epoch为20时解冻线性层
+        return UNFREEZE_PLAN
+
 class Shallow_3DCNN_Encoder(nn.Module):
     def __init__(self, in_shape=(138,17,17)):
         super().__init__()

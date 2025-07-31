@@ -19,9 +19,58 @@ class Spe_Spa_Attenres(nn.Module):
         embedding = self.encoder(x)
         x = self.decoder(embedding)
         return embedding, x
+    
+
     def predict(self, x):
         return self.encoder(x)
+    
+class Spe_Spa_Attenres_Fixed(nn.Module):
+    def __init__(self, in_shape, out_embedding=24, T=0.07):
+        super().__init__()  
+        self.encoder_q = Spe_Spa_Attenres_Encoder(out_embedding=out_embedding, in_shape=in_shape)
+        self.encoder_k = Spe_Spa_Attenres_Encoder(out_embedding=out_embedding, in_shape=in_shape)
+        self.decoder = Spe_Spa_Atten_Decoder(out_embedding, 128, mid_channels=128)
+        self.T = T
+        for param_q, param_k in zip(
+            self.encoder_q.parameters(), self.encoder_k.parameters()
+        ):
+            param_k.data.copy_(param_q.data)  # initialize
+            param_k.requires_grad = False  # 确保k与q的初始参数一致，k模型不反向传播参数
 
+    @torch.no_grad()
+    def _update_key_encoder(self) -> None:
+        """
+        Momentum update of the key encoder: k的参数动量更新
+        """
+        for param_q, param_k in zip(
+            self.encoder_q.parameters(), self.encoder_k.parameters()
+        ):
+            param_k.data = param_q.data # 更新k参数
+
+    def forward(self, input_q, input_k):
+        if input_q.dim() == 4:
+            input_q = input_q.unsqueeze(1)  # 增加一个维度到 [B, 1, C, H, W]
+            input_k = input_k.unsqueeze(1)
+        elif input_q.dim() != 5:
+            raise ValueError(f"Expected input dimension 4 or 5, but got {input_q.dim()}")
+        
+        embedding_q = self.encoder_q(input_q)
+        q = self.decoder(embedding_q)
+        q = nn.functional.normalize(q, dim=1)
+        with torch.no_grad():
+            self._update_key_encoder()
+            embedding_k = self.encoder_k(input_k)
+            k = self.decoder(embedding_k)
+            k = nn.functional.normalize(k, dim=1)
+        similarity_matrix = torch.matmul(q, k.T) / self.T
+        mask = torch.eye(input_q.shape[0], dtype=torch.bool).to(input_q.device)
+        positives = similarity_matrix[mask].view(input_q.shape[0], -1) # 对角线位置为正样本对
+        negatives = similarity_matrix[~mask].view(input_q.shape[0], -1)
+        logits = torch.cat([positives, negatives], dim=1)  # 拼接
+        labels = torch.zeros(logits.shape[0], dtype=torch.long).to(input_q.device)
+        return logits, labels
+    
+    
 class Contra_Res18(nn.Module):
     def __init__(self, out_embedding=1024, in_shape=(138,17,17)):
         super().__init__()

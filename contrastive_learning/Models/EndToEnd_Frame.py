@@ -4,6 +4,7 @@ base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(base_path)
 import shutil
 from datetime import datetime
+import torch.nn as nn
 from tqdm import tqdm
 from multiprocessing import cpu_count
 from torch.utils.tensorboard import SummaryWriter
@@ -11,11 +12,12 @@ import torch
 from contrastive_learning.Models.loss import InfoNCELoss
 import traceback
 import time
+from utils import AverageMeter, ProgressMeter, topk_accuracy
 
 class EndToEnd_Frame:
     def __init__(self, augment, model_name, min_lr=1e-7, epochs=300, device=None, if_full_cpu=True):
         self.augment = augment
-        self.infonce = InfoNCELoss(temperature=0.07)
+        self.loss = nn.CrossEntropyLoss()
         self.min_lr = min_lr
         self.epochs=epochs
 
@@ -29,19 +31,19 @@ class EndToEnd_Frame:
         self.parent_dir = os.path.join(base_path, '_results') # 创建一个父目录保存训练结果
         if not os.path.exists(self.parent_dir):
             os.makedirs(self.parent_dir)
-        model_dir = os.path.join(self.parent_dir, 'models_pth')
-        log_dir = os.path.join(self.parent_dir, 'logs')
-        if not os.path.exists(model_dir):
-            os.makedirs(model_dir)
-        if not os.path.exists(log_dir):
-            os.makedirs(log_dir)
-        self.model_path = os.path.join(model_dir, f'{model_save_name}.pth')
-        self.log_path = os.path.join(log_dir, f'{model_save_name}.log')
-        self.tensorboard_dir = os.path.join(self.parent_dir, f'tensorboard_logs\\{model_save_name}')
+        self.model_dir = os.path.join(self.parent_dir, model_save_name)
+        if not os.path.exists(self.model_dir):
+            os.makedirs(self.model_dir)
+            
+        self.model_path = os.path.join(self.model_dir, f'{model_save_name}.pth')
+        self.model_best_path = os.path.join(self.model_dir, f'{model_save_name}_best.pth')
+        self.log_path = os.path.join(self.model_dir, f'{model_save_name}.log')
+        self.tensorboard_dir = os.path.join(self.model_dir , f'tensorboard_logs')
 
         #配置训练信息
         self.if_full_cpu = if_full_cpu
         self.train_epoch_min_loss = 100
+        self.epoch_max_acc = -1
         self.start_epoch = 0
 
     def full_cpu(self):
@@ -56,30 +58,31 @@ class EndToEnd_Frame:
             print('Using cpu core num: ', cpu_num)
         print(f'Cuda device count: {torch.cuda.device_count()} And the current device:{self.device}')  # 显卡数
 
-def save_model(frame, model, optimizer, scheduler, epoch=None, avg_loss=None):
+def save_model(frame, model, optimizer, scheduler, epoch=None, avg_loss=None, avg_acc=None, is_best=False):
+    """注意：将需要迁移的部分使用 backbone 存储起来"""
     state = {
         'model': model.state_dict(),
         'optimizer': optimizer.state_dict(),
         'epoch': epoch,
         'best_loss': avg_loss,
+        'best_acc': avg_acc,
         'scheduler': scheduler.state_dict() if scheduler else None,
-        'current_lr': optimizer.param_groups[0]['lr']
+        'current_lr': optimizer.param_groups[0]['lr'],
+        'backbone': model.encoder_q.state_dict(),
     }
     torch.save(state, frame.model_path)
-    print(f"============Checkpoint saved at epoch {epoch + 1}============")
+    if is_best:
+        shutil.copyfile(frame.model_path, frame.model_best_path)
+        print(f"============The best checkpoint saved at epoch {epoch + 1}============")
 
-def clean_up(frame, log_writer, tensor_writer):
-    """清理日志文件和tensorboard目录"""
+def clean_up(frame):
+    """清理因终端或异常生成的文件"""
     if not os.path.exists(frame.model_path):
-        if os.path.exists(frame.log_path):
-            log_writer.close()
-            os.remove(frame.log_path)
-            print(f"Removed log file: {frame.log_path}")
-        if os.path.exists(frame.tensorboard_dir):
-            tensor_writer.close()
-            shutil.rmtree(frame.tensorboard_dir)
-            print(f"Removed tensorboard directory: {frame.tensorboard_dir}")
+        if os.path.exists(frame.model_dir):
+            shutil.rmtree(frame.model_dir)
+            print(f"Directory {frame.model_dir} has been removed.")
     else: pass
+
 
 def load_parameter(frame, model, optimizer, scheduler=None, ck_pth=None, load_from_ck=False): # 加载模型、优化器、调度器
     frame.full_cpu() # 打印配置信息
@@ -102,6 +105,7 @@ def load_parameter(frame, model, optimizer, scheduler=None, ck_pth=None, load_fr
             print(f"Loaded checkpoint from epoch {frame.start_epoch}, current lr {optimizer.param_groups[0]['lr']}")
 
 def train(frame, model, optimizer, dataloader, scheduler=None, ck_pth=None, clean_noise_samples=False, load_from_ck=False, clean_th=0.99):
+    start_time = time.time()
     log_writer = open(frame.log_path, 'w')
     if not os.path.exists(frame.tensorboard_dir):
         os.makedirs(frame.tensorboard_dir)
@@ -111,66 +115,92 @@ def train(frame, model, optimizer, dataloader, scheduler=None, ck_pth=None, clea
     model.train() # 开启训练模式，自训练没有测试模式，所以这个可以在训练之前设置
     
     model_save_epoch = 0
-    start_time = time.time()
+    max_iter_num = len(dataloader)
+    interval_printinfo = max_iter_num // 10 # 每个epoch打印十次过程参数
+    loss_note = AverageMeter("Loss", ":.6f")
+    top1_acc_note = AverageMeter("Top1-Accuracy", ":.4f")
+    top5_acc_note = AverageMeter("Top5-Accuracy", ":.4f") 
+    Epoch_wirter = ProgressMeter(frame.epochs, len(dataloader), [loss_note, top1_acc_note, top5_acc_note], "\nBatch")
+    # start training
     try:
         for epoch in range(frame.start_epoch, frame.epochs):
-            running_loss = 0.0
-            for block in tqdm(dataloader, total=len(dataloader), desc="Train", leave=True):
+            for i,block in tqdm(enumerate(dataloader), total=len(dataloader), desc="Train", leave=True):
                 block = block.to(frame.device) # batch,C,H,W
+                batchs = block.size(0)
                 with torch.no_grad():
-                    block1 = frame.augment(block)
-                    block2 = frame.augment(block)
+                    q = frame.augment(block)
+                    k = frame.augment(block)
                 optimizer.zero_grad()  # 清空梯度
-                embedding, out = model(torch.cat((block1, block2), dim=0))
-                if clean_noise_samples:
-                    frame.infonce.cosine_similarity_matrix(embedding, th=clean_th)
+                logits, label = model(q, k)
+                loss = frame.loss(logits, label)
+                acc1, acc5 = topk_accuracy(logits, label, topk=(1, 5))
 
-                loss = frame.infonce(out)  # 对比损失
+                loss_note.update(loss.item(), batchs)
+                top1_acc_note.update(acc1.item(), batchs)
+                top5_acc_note.update(acc5.item(), batchs)
                 loss.backward()  # 反向传播
                 optimizer.step()  # 更新权重
-                running_loss += loss.item()
-            avg_loss = running_loss / len(dataloader)
+                if (i+1) % interval_printinfo == 0:
+                    Epoch_wirter.display(i+1)
+
             current_lr = optimizer.param_groups[0]['lr']
-            result = f"Epoch-{epoch + 1} , Loss: {avg_loss:.8f}, Lr: {current_lr:.8f}"
-            log_writer.write(result + '\n') # 记录训练过程
-            tensor_writer.add_scalar('Train/Loss', avg_loss, epoch) # 记录到tensorboard
-            print(result)
-            if avg_loss >= frame.train_epoch_min_loss:  # 若当前epoch的loss大于等于之前最小的loss
-                pass
-            else:
-                frame.train_epoch_min_loss = avg_loss
+            epoch_summary = Epoch_wirter.epoch_summary(epoch+1, f"Lr:{current_lr:.2e}")
+            log_writer.write(epoch_summary + '\n') # 记录训练过程
+            tensor_writer.add_scalar('Train/Loss', loss_note.avg, epoch) # 记录到tensorboard
+            tensor_writer.add_scalar('Train/Top1', top1_acc_note.avg, epoch)
+            tensor_writer.add_scalar('Train/Top5', top5_acc_note.avg, epoch)
+            is_best = False
+            if top1_acc_note.avg > frame.epoch_max_acc: # 使用top1准确率来保存模型
+                frame.epoch_max_acc = top1_acc_note.avg
+                frame.train_epoch_min_loss = loss_note.avg
                 model_save_epoch = epoch
-                save_model(frame= frame, model=model, optimizer=optimizer, scheduler=scheduler, epoch=epoch, avg_loss=avg_loss)
+                is_best = True
+            elif top1_acc_note.avg == frame.epoch_max_acc:
+                if loss_note.avg < frame.train_epoch_min_loss:
+                    frame.epoch_max_acc = top1_acc_note.avg
+                    frame.train_epoch_min_loss = loss_note.avg
+                    model_save_epoch = epoch
+                    is_best = True
+            save_model(frame=frame, model=model, optimizer=optimizer, scheduler=scheduler, 
+                       epoch=epoch, avg_loss=loss_note.avg, avg_acc=top1_acc_note.avg, is_best=is_best)
             if current_lr <= frame.min_lr:
                 pass
             else:
                 if scheduler is not None:
                     scheduler.step()
+            loss_note.reset()
+            top1_acc_note.reset()
+            top5_acc_note.reset()
             log_writer.flush()
         # 打印和记录结果
-        result = f'Model saved at Epoch{model_save_epoch}. \nThe best training_loss:{frame.train_epoch_min_loss}'
-        end_time = time.time()
-        total_seconds = end_time - start_time
-        hours = int(total_seconds // 3600)
-        minutes = int((total_seconds % 3600) // 60)
-        seconds = int(total_seconds % 60)
-        runtime = f'Program runtime: {hours}h {minutes}m {seconds}s'
+        result = f'Model saved at Epoch{model_save_epoch}. \nThe best top1-acc:{frame.epoch_max_acc}. \nThe best training_loss:{frame.train_epoch_min_loss}'
+        run_time = cal_time(time.time() - start_time)
         log_writer.write(result + '\n')
-        log_writer.write(runtime + '\n')
+        log_writer.write("Program runtime:" + run_time + '\n')
         print(result)
-        print(runtime)
+        print(run_time)
     except KeyboardInterrupt: # 捕获键盘中断信号
+        log_writer.close()
+        tensor_writer.close()
         print(f"Training interrupted due to: KeyboardInterrupt")
-        clean_up(frame=frame, log_writer=log_writer, tensor_writer=tensor_writer)
+        clean_up(frame=frame)
     except Exception as e: 
+        log_writer.close()
+        tensor_writer.close()
         print(traceback.format_exc())  # 打印完整的堆栈跟踪
-        clean_up(frame=frame, log_writer=log_writer, tensor_writer=tensor_writer)
+        clean_up(frame=frame)
     finally:
         log_writer.close()
         tensor_writer.close()
         print(f"Training completed. Program exited.")
         sys.exit(0)
-    
+def cal_time(seconds): # 计算时分秒
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    seconds = int(seconds % 60)
+    runtime = f'{hours}h {minutes}m {seconds}s'
+    return runtime
+  
 class Contrasive_learning_predict_frame:
     def __init__(self, device=None):
         if device is None:

@@ -143,7 +143,7 @@ def train(frame:Moco_Frame, model, optimizer, dataloader, scheduler=None, ck_pth
                     Epoch_wirter.display(i+1)
 
             current_lr = optimizer.param_groups[0]['lr']
-            epoch_summary = Epoch_wirter.epoch_summary(epoch+1, f"Lr:{current_lr:.8f}")
+            epoch_summary = Epoch_wirter.epoch_summary(epoch+1, f"Lr:{current_lr:.2e}")
             log_writer.write(epoch_summary + '\n') # 记录训练过程
             tensor_writer.add_scalar('Train/Loss', loss_note.avg, epoch) # 记录到tensorboard
             tensor_writer.add_scalar('Train/Top1', top1_acc_note.avg, epoch)
@@ -180,9 +180,13 @@ def train(frame:Moco_Frame, model, optimizer, dataloader, scheduler=None, ck_pth
         print(result)
         print(run_time)
     except KeyboardInterrupt: # 捕获键盘中断信号
+        log_writer.close()
+        tensor_writer.close()
         print(f"Training interrupted due to: KeyboardInterrupt")
         clean_up(frame=frame)
     except Exception as e: 
+        log_writer.close()
+        tensor_writer.close()
         print(traceback.format_exc())  # 打印完整的堆栈跟踪
         clean_up(frame=frame)
     finally:

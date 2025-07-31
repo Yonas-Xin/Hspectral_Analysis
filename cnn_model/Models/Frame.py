@@ -202,9 +202,13 @@ def train(frame, model, optimizer, train_dataloader, eval_dataloader=None, sched
         if eval_dataloader is not None:
             print_result_report(frame=frame, model=model, ck_pth=frame.model_best_path, eval_dataloader=eval_dataloader, log_writer=log_writer) # 训练完成打印报告
     except KeyboardInterrupt: # 捕获键盘中断信号
+        log_writer.close()
+        tensor_writer.close()
         print(f"Training interrupted due to: KeyboardInterrupt")
         clean_up(frame=frame)
     except Exception as e: 
+        log_writer.close()
+        tensor_writer.close()
         print(traceback.format_exc())  # 打印完整的堆栈跟踪
         clean_up(frame=frame)
     finally:
