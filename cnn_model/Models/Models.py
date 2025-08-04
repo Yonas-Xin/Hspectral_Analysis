@@ -1,54 +1,51 @@
+"""针对Models模块的升级"""
 from cnn_model.Models.Encoder import *
 from cnn_model.Models.Decoder import *
 import torch.nn as nn
 import torch.nn.functional as F
 import torch
 from cnn_model.Models.Data import Dataset_3D, Dataset_1D
-class Constrastive_learning_Model(nn.Module):
-    # 暂时是项目用的模型，不要删！！！
-    def __init__(self, out_embedding=24, out_classes=8, in_shape=(138,17,17)):
+
+class My_Model(nn.Module):
+    def __init__(self, out_classes=None, out_embedding=None, in_shape=None): # 框架需要三个输入
         super().__init__()
-        self.encoder = Spe_Spa_Attenres_Encoder(out_embedding=out_embedding, in_shape=in_shape) # 3d卷积残差编码器
-        self.decoder = deep_classfier(out_embedding, out_classes, mid_channels=4096)
-    def forward(self, x):
-        if x.dim() == 4:
-            x = x.unsqueeze(1)  # 增加一个维度到 [B, 1, C, H, W]
-        elif x.dim() != 5:
-            raise ValueError(f"Expected input dimension 4 or 5, but got {x.dim()}")
-        x = self.encoder(x)
-        x = self.decoder(x)
-        return x
-    def freeze_encoder(self):
+        self.unfreeze_idx = None
+
+    def _freeze_encoder(self):
         for param in self.encoder.parameters():
             param.requires_grad = False
+        
+        for param in self.encoder.fc.parameters():
+            param.requires_grad = True # encoder 的fc层需要正常梯度传播
+        
+        try:
+            for param in self.encoder.layer4.parameters():
+                param.requires_grad = True
+        except:
+            print("Warning: layer4 not found in encoder, skipping unfreeze.")
 
-    def load_from_contrastive_model(self, pth, map_location=None):
-        whole_model = torch.load(pth, map_location=map_location)['model']  # 加载文件的模型部分,包括解码器权重
-        encoder_state_dict = {k.replace('encoder.',''): v for k, v in whole_model.items() if "encoder." in k}  # 提取encoder权重
-        self.encoder.load_state_dict(encoder_state_dict, strict=True)  # 匹配键值
-    
-    def gradually_unfreeze_encoder_modules(self, epoch):
-        """
-        根据 当前epoch逐步 解冻 encoder 的模块
-        epoch:当前训练的轮次
-        """
-        schedule = self.encoder.get_unfreeze_plan # 获取解冻字典
-        if epoch in schedule:
-            modules_to_unfreeze = schedule[epoch]
-            if isinstance(modules_to_unfreeze, str):
-                modules_to_unfreeze = [modules_to_unfreeze]
-            for name in modules_to_unfreeze:
-                module = getattr(self.encoder, name)
-                for param in module.parameters():
-                    param.requires_grad = True
-                print(f"[Epoch {epoch}] 解冻 encoder 模块: {name}")
+    def _load_encoer_params(self, state_dict):
+        try:
+            self.encoder.load_state_dict(state_dict, strict=True)
+        except RuntimeError:
+            # 过滤掉不匹配的键
+            print('Atteneion: The encoder weights do not match exactly!')
+            model_state_dict = self.encoder.state_dict()
+            matched_state_dict = {
+                k: v for k, v in state_dict.items() 
+                if k in model_state_dict and v.shape == model_state_dict[k].shape
+            }
+            model_state_dict.update(matched_state_dict)
+            self.encoder.load_state_dict(model_state_dict, strict=False)
+            skipped = set(state_dict.keys()) - set(matched_state_dict.keys())
+            if skipped:
+                print(f"Skipped loading these keys due to size mismatch: {skipped}")
 
-
-class Res_3D_18Net(nn.Module):
-    def __init__(self, out_classes=8):
+class Res_3D_18Net(My_Model):
+    def __init__(self, out_classes, out_embeddings=1024, in_shape=None):
         super().__init__()
-        self.encoder = ResNet_3D(block=Basic_Residual_block, layers=[2,2,2,2], num_classes=1024) # 3d卷积残差编码器
-        self.decoder = deep_classfier(1024, out_classes, mid_channels=4096)
+        self.encoder = ResNet_3D(block=Basic_Residual_block, layers=[2,2,2,2], num_classes=out_embeddings) # 3d卷积残差编码器
+        self.decoder = deep_classfier(out_embeddings, out_classes, mid_channels=1024)
     def forward(self, x):
         if x.dim() == 4:
             x = x.unsqueeze(1)  # 增加一个维度到 [B, 1, C, H, W]
@@ -58,11 +55,11 @@ class Res_3D_18Net(nn.Module):
         x = self.decoder(x)
         return x
 
-class Res_3D_34Net(nn.Module):
-    def __init__(self, out_classes=8):
+class Res_3D_34Net(My_Model):
+    def __init__(self, out_classes, out_embeddings=1024, in_shape=None):
         super().__init__()
-        self.encoder = ResNet_3D(block=Basic_Residual_block, layers=[3,4,6,3], num_classes=1024) # 3d卷积残差编码器
-        self.decoder = deep_classfier(1024, out_classes, mid_channels=4096)
+        self.encoder = ResNet_3D(block=Basic_Residual_block, layers=[3,4,6,3], num_classes=out_embeddings) # 3d卷积残差编码器
+        self.decoder = deep_classfier(out_embeddings, out_classes, mid_channels=1024)
     def forward(self, x):
         if x.dim() == 4:
             x = x.unsqueeze(1)  # 增加一个维度到 [B, 1, C, H, W]
@@ -72,11 +69,11 @@ class Res_3D_34Net(nn.Module):
         x = self.decoder(x)
         return x
     
-class Res_3D_50Net(nn.Module):
-    def __init__(self, out_classes=8):
+class Res_3D_50Net(My_Model):
+    def __init__(self, out_classes, out_embeddings=1024, in_shape=None):
         super().__init__()
-        self.encoder = ResNet_3D(block=Bottleneck_Residual_block, layers=[3,4,6,3], num_classes=1024) # 3d卷积残差编码器
-        self.decoder = deep_classfier(1024, out_classes, mid_channels=4096)
+        self.encoder = ResNet_3D(block=Bottleneck_Residual_block, layers=[3,4,6,3], num_classes=out_embeddings) # 3d卷积残差编码器
+        self.decoder = deep_classfier(out_embeddings, out_classes, mid_channels=1024)
     def forward(self, x):
         if x.dim() == 4:
             x = x.unsqueeze(1)  # 增加一个维度到 [B, 1, C, H, W]
@@ -86,11 +83,11 @@ class Res_3D_50Net(nn.Module):
         x = self.decoder(x)
         return x
     
-class Shallow_3DCNN(nn.Module):
+class Shallow_3DCNN(My_Model):
     '''浅层3D CNN模型'''
-    def __init__(self, out_embedding=None, out_classes=8, in_shape=(138,17,17)):
+    def __init__(self, out_classes, out_embedding=1024, in_shape=None):
         super().__init__()
-        self.encoder = Shallow_3DCNN_Encoder(in_shape=in_shape) # 3d卷积残差编码器
+        self.encoder = Shallow_3DCNN_Encoder(out_embedding=out_embedding) # 3d卷积残差编码器
         self.decoder = nn.Linear(128, out_features=out_classes)
     
     def forward(self, x):
@@ -102,12 +99,12 @@ class Shallow_3DCNN(nn.Module):
         x = self.decoder(x)
         return x
 
-class Shallow_1DCNN(nn.Module):
+class Shallow_1DCNN(My_Model):
     '''浅层1D CNN模型'''
-    def __init__(self, out_embedding=None, out_classes=8, in_shape=(138,)):
+    def __init__(self, out_classes, out_embedding=1024, in_shape=None):
         super().__init__()
-        self.encoder = Shallow_1DCNN_Encoder(in_shape=in_shape)  # 1D CNN 编码器
-        self.decoder = deep_classfier(128, out_classes, mid_channels=4096)
+        self.encoder = Shallow_1DCNN_Encoder(out_embedding=out_embedding)  # 1D CNN 编码器
+        self.decoder = deep_classfier(128, out_classes, mid_channels=1024)
 
     def forward(self, x):
         if x.dim() == 2:
@@ -117,14 +114,14 @@ class Shallow_1DCNN(nn.Module):
         x = self.encoder(x)
         x = self.decoder(x)
         return x
-
-class Unet_3DCNN(nn.Module):
-    '''3D CNN UNet模型'''
-    def __init__(self, out_embedding=None, out_classes=8, in_shape=(138,17,17)):
+    
+class Constrastive_learning_Model(My_Model):
+    def __init__(self, out_classes, out_embedding=1024, in_shape=None):
         super().__init__()
-        self.encoder = Unet_3DCNN_Encoder(out_embedding=out_embedding, in_shape=in_shape)  # 3D CNN UNet 编码器
-        self.decoder = deep_classfier(out_embedding, out_classes, mid_channels=4096)
-
+        if in_shape is None:
+            raise ValueError("in_shape must be provided for the model.")
+        self.encoder = Spe_Spa_Attenres_Encoder(in_shape=in_shape, out_embedding=out_embedding)
+        self.decoder = deep_classfier(out_embedding, out_classes, mid_channels=1024)
     def forward(self, x):
         if x.dim() == 4:
             x = x.unsqueeze(1)  # 增加一个维度到 [B, 1, C, H, W]
@@ -139,6 +136,7 @@ MODEL_DICT = {
     'Shallow_1DCNN':Shallow_1DCNN,
     'Shallow_3DCNN':Shallow_3DCNN,
     "Res_3D_18Net": Res_3D_18Net,
+    "Res_3D_34Net": Res_3D_34Net,
     "Res_3D_50Net": Res_3D_50Net
 }
 DATASET_DICT = {
@@ -146,5 +144,6 @@ DATASET_DICT = {
     'Shallow_1DCNN':Dataset_1D,
     'Shallow_3DCNN':Dataset_3D,
     "Res_3D_18Net": Dataset_3D,
+    "Res_3D_34Net": Dataset_3D,
     "Res_3D_50Net": Dataset_3D
 }

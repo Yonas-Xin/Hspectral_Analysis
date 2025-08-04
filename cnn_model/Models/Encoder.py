@@ -62,47 +62,12 @@ class ResNet_3D(nn.Module):
         return x
 
 class Spe_Spa_Attenres_Encoder(nn.Module):
-    # 暂时是项目用的模型，不要删！！！
-    '''5个残差块和一个卷积块'''
-    def __init__(self, out_embedding=24, in_shape=(138,17,17)):
-        super().__init__()
-        bands, H, W = in_shape
-        self.spectral_attention = ECA_SpectralAttention_3d(bands, 2,1)# 光谱注意力
-        self.conv_block = Common_3d(1,64,(7,1,1),(3,0,0), 1) # 光谱方向卷积
-        self.res_block1 = Residual_block(64,64,(3,3,3),(1,1,1),1)
-        self.res_block2 = Residual_block(64,128,(3,3,3),(1,1,1),2) # stride=2
-        self.res_block3 = Residual_block(128,256,(3,3,3),(1,1,1),1)
-        self.res_block4 = Residual_block(256,512,(3,3,3),(1,1,1),2) # stride=2
-        self.res_block5 = Residual_block(512,512,(3,3,3),(1,1,1),1)
-        self.avg_pool = nn.AvgPool3d(2) # 立方体压缩
-        in_feature = int(bands/8)*int(H/8)*int(W/8)*512
-        self.fc = nn.Linear(in_feature, out_features=out_embedding)
-    def forward(self, x):
-        x = self.spectral_attention(x)
-        x = self.conv_block(x)
-        x = self.res_block1(x)
-        x = self.res_block2(x)
-        x = self.res_block3(x)
-        x = self.res_block4(x)
-        x = self.avg_pool(self.res_block5(x))
-        x = x.view(x.shape[0], -1)
-        return self.fc(x)
-    
-    @property # 返回解冻计划
-    def get_unfreeze_plan(self):
-        UNFREEZE_PLAN = {80:'res_block3',
-                         60:'res_block4',
-                         40:'res_block5',
-                         20:'linear'} # epoch为20时解冻线性层
-        return UNFREEZE_PLAN
-
-class Spe_Spa_Attenres_Encoder_Fixed(nn.Module):
     '''6个残差块和一个卷积块'''
     def __init__(self, in_shape, out_embedding=1024):
         super().__init__()
         bands, H, W = in_shape
         self.spectral_attention = ECA_SpectralAttention_3d(bands, 2, 1)# 光谱注意力
-        self.conv_block = Common_3d(1, 64, 7, 3, (2,1,1))
+        self.conv_block = Common_3d(1, 64, 7, stride=(2,1,1), padding=(3))
         self.pool = nn.MaxPool3d(kernel_size=2, stride=2)
         self.res_block1 = Residual_block(64, 64, (3,3,3), (1,1,1), 1)
         self.res_block2 = Residual_block(64, 128, (3,3,3), (1,1,1), (2,1,1)) # stride=2
@@ -114,12 +79,12 @@ class Spe_Spa_Attenres_Encoder_Fixed(nn.Module):
         self.fc = nn.Linear(512, out_features=out_embedding)
     def forward(self, x):
         x = self.spectral_attention(x)
-        x = self.conv_block(x)
+        x = self.pool(self.conv_block(x))
         x = self.res_block1(x)
         x = self.res_block2(x)
         x = self.res_block3(x)
         x = self.res_block4(x)
-        x = self.res_block5(5)
+        x = self.res_block5(x)
         x = self.avg_pool(self.res_block6(x))
         x = x.view(x.shape[0], -1)
         return self.fc(x)
@@ -133,51 +98,43 @@ class Spe_Spa_Attenres_Encoder_Fixed(nn.Module):
         return UNFREEZE_PLAN
 
 class Shallow_3DCNN_Encoder(nn.Module):
-    def __init__(self, in_shape=(138,17,17)):
+    def __init__(self, out_embedding=1024):
         super().__init__()
-        bands, H, W = in_shape
-        self.conv1 = Common_3d(1, 32, kernel_size=(3,3,3), padding=(1,1,1))
+        self.conv1 = Common_3d(1, 64, kernel_size=7, padding=3, stride=(2,1,1))
         self.pool1 = nn.MaxPool3d(kernel_size=2, stride=2)
-        self.conv2_1 = Common_3d(32, 64, kernel_size=(3,3,3), padding=(1,1,1))
-        self.conv2_2 = Common_3d(64, 64, kernel_size=(3,3,3), padding=(1,1,1))
-        self.pool2 = nn.MaxPool3d(kernel_size=2, stride=2)
-        self.conv3 = Common_3d(64, 128, kernel_size=(3,3,3), padding=(1,1,1))
-        self.conv4 = Common_3d(128, 128, kernel_size=(3,3,3), padding=(1,1,1))
-        self.pool3 = nn.AvgPool3d(2)
-        in_feature = int(bands/8)*int(H/8)*int(W/8)*128
-        self.fc = nn.Linear(in_feature, out_features=128)
+        self.conv2_1 = Common_3d(64, 64, kernel_size=(3,3,3), padding=(1,1,1), stride=1)
+        self.conv2_2 = Common_3d(64, 128, kernel_size=(3,3,3), padding=(1,1,1), stride=(2,1,1))
+        self.conv3_1 = Common_3d(128, 128, kernel_size=(3,3,3), padding=(1,1,1), stride=1)
+        self.conv3_2 = Common_3d(128, 256, kernel_size=(3,3,3), padding=(1,1,1), stride=(2,1,1))
+        self.conv4_1 = Common_3d(256, 256, kernel_size=(3,3,3), padding=(1,1,1), stride=1)
+        self.conv4_2 = Common_3d(256, 512, kernel_size=(3,3,3), padding=(1,1,1), stride=(2,1,1))
+        self.pool3 = nn.AdaptiveAvgPool3d((1,1,1))
+        self.fc = nn.Linear(512, out_features=out_embedding)
     
     def forward(self, x):
         x = self.pool1(self.conv1(x))
-        x = self.pool2(self.conv2_2(self.conv2_1(x)))
-        x = self.pool3(self.conv4(self.conv3(x)))
+        x = self.conv2_2(self.conv2_1(x))
+        x = self.conv3_2(self.conv3_1(x))
+        x = self.pool3(self.conv4_2(self.conv4_1(x)))
         x = x.view(x.size(0), -1)
         return self.fc(x)
 
 class Shallow_1DCNN_Encoder(nn.Module):
-    def __init__(self, in_shape=(138,)):
+    def __init__(self, out_embedding=1024):
         super().__init__()
-        channels = 1
-        length = in_shape[0]
-
-        self.conv1 = Common_1d(channels, 32, kernel_size=3, padding=1)
+        self.conv1 = Common_1d(1, 64, kernel_size=7, padding=3, stride=1)
         self.pool1 = nn.MaxPool1d(kernel_size=2, stride=2)
+        self.conv2 = Common_1d(64, 128, kernel_size=3, padding=1)
+        self.conv3 = Common_1d(128, 256, kernel_size=3, padding=1)
+        self.conv4 = Common_1d(256, 512, kernel_size=3, padding=1)
+        self.pool3 = nn.AdaptiveAvgPool1d((1))
 
-        self.conv2_1 = Common_1d(32, 64, kernel_size=3, padding=1)
-        self.conv2_2 = Common_1d(64, 64, kernel_size=3, padding=1)
-        self.pool2 = nn.MaxPool1d(kernel_size=2, stride=2)
-
-        self.conv3 = Common_1d(64, 128, kernel_size=3, padding=1)
-        self.conv4 = Common_1d(128, 128, kernel_size=3, padding=1)
-        self.pool3 = nn.AvgPool1d(2)
-
-        in_feature = int(length/8) * 128
-        self.fc = nn.Linear(in_feature, 128)
+        self.fc = nn.Linear(512, out_embedding)
 
     def forward(self, x):
         # 输入尺寸 [B, 1, L]
         x = self.pool1(self.conv1(x))
-        x = self.pool2(self.conv2_2(self.conv2_1(x)))
+        x = self.conv2(x)
         x = self.conv4(self.conv3(x))
         x = self.pool3(x)         # [B, 128, 1]
         x = x.view(x.size(0), -1) # [B, 128]

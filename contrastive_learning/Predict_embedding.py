@@ -5,7 +5,7 @@ import torch
 import numpy as np
 from contrastive_learning.Models.Data import Dataset_3D, DynamicCropDataset
 from torch.utils.data import DataLoader
-from contrastive_learning.Models.Models import Spe_Spa_Attenres
+from contrastive_learning.Models.Models import Ete_3D
 from utils import read_txt_to_list, save_matrix_to_csv
 from tqdm import tqdm
 from contrastive_learning.Models.EndToEnd_Frame import Contrasive_learning_predict_frame
@@ -18,7 +18,7 @@ if __name__ == '__main__':
 
     dataset = DynamicCropDataset(input_img, input_shp, block_size=17)
     dataloader = DataLoader(dataset, shuffle=False, batch_size=24)
-    model = Spe_Spa_Attenres(24, dataset.data_shape)  # 模型实例化
+    model = Ete_3D(24, dataset.data_shape)  # 模型实例化
     state_dict = torch.load(model_path, weights_only=True, map_location=device)
     model.load_state_dict(state_dict['model'])
     frame = Contrasive_learning_predict_frame(device=device)

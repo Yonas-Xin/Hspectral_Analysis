@@ -1,35 +1,17 @@
 import torch.nn as nn
 import torch.nn.functional as F
 from contrastive_learning.Models.Encoder import *
-from contrastive_learning.Models.Decoder import *
-from cnn_model.Models.Models import Res_3D_18Net
 import torch
-
-class Spe_Spa_Attenres(nn.Module):
-    # 暂时是项目用的模型，不要删！！！
-    def __init__(self, out_embedding=24, in_shape=(138,17,17)):
-        super().__init__()  
-        self.encoder = Spe_Spa_Attenres_Encoder(out_embedding=out_embedding, in_shape=in_shape)
-        self.decoder = Spe_Spa_Atten_Decoder(out_embedding, 128, mid_channels=128)
-    def forward(self, x):
-        if x.dim() == 4:
-            x = x.unsqueeze(1)  # 增加一个维度到 [B, 1, C, H, W]
-        elif x.dim() != 5:
-            raise ValueError(f"Expected input dimension 4 or 5, but got {x.dim()}")
-        embedding = self.encoder(x)
-        x = self.decoder(embedding)
-        return embedding, x
     
-
-    def predict(self, x):
-        return self.encoder(x)
-    
-class Spe_Spa_Attenres_Fixed(nn.Module):
-    def __init__(self, in_shape, out_embedding=24, T=0.07):
+class Ete_3D(nn.Module):
+    def __init__(self, 
+                 in_shape, 
+                 base_model=Spe_Spa_Attenres,
+                 out_embedding=1024, 
+                 T=0.07):
         super().__init__()  
-        self.encoder_q = Spe_Spa_Attenres_Encoder(out_embedding=out_embedding, in_shape=in_shape)
-        self.encoder_k = Spe_Spa_Attenres_Encoder(out_embedding=out_embedding, in_shape=in_shape)
-        self.decoder = Spe_Spa_Atten_Decoder(out_embedding, 128, mid_channels=128)
+        self.encoder_q = base_model(out_embedding=out_embedding, in_shape=in_shape)
+        self.encoder_k = base_model(out_embedding=out_embedding, in_shape=in_shape)
         self.T = T
         for param_q, param_k in zip(
             self.encoder_q.parameters(), self.encoder_k.parameters()
@@ -48,42 +30,20 @@ class Spe_Spa_Attenres_Fixed(nn.Module):
             param_k.data = param_q.data # 更新k参数
 
     def forward(self, input_q, input_k):
-        if input_q.dim() == 4:
-            input_q = input_q.unsqueeze(1)  # 增加一个维度到 [B, 1, C, H, W]
-            input_k = input_k.unsqueeze(1)
-        elif input_q.dim() != 5:
-            raise ValueError(f"Expected input dimension 4 or 5, but got {input_q.dim()}")
-        
-        embedding_q = self.encoder_q(input_q)
-        q = self.decoder(embedding_q)
+        q = self.encoder_q(input_q)
         q = nn.functional.normalize(q, dim=1)
         with torch.no_grad():
             self._update_key_encoder()
-            embedding_k = self.encoder_k(input_k)
-            k = self.decoder(embedding_k)
+            k = self.encoder_k(input_k)
             k = nn.functional.normalize(k, dim=1)
-        similarity_matrix = torch.matmul(q, k.T) / self.T
+        similarity_matrix = torch.matmul(q, k.T)
         mask = torch.eye(input_q.shape[0], dtype=torch.bool).to(input_q.device)
         positives = similarity_matrix[mask].view(input_q.shape[0], -1) # 对角线位置为正样本对
         negatives = similarity_matrix[~mask].view(input_q.shape[0], -1)
         logits = torch.cat([positives, negatives], dim=1)  # 拼接
+        logits /= self.T
         labels = torch.zeros(logits.shape[0], dtype=torch.long).to(input_q.device)
         return logits, labels
-    
-    
-class Contra_Res18(nn.Module):
-    def __init__(self, out_embedding=1024, in_shape=(138,17,17)):
-        super().__init__()
-        self.encoder = ResNet_3D(block=Basic_Residual_block, layers=[2,2,2,2], num_classes=out_embedding) # 3d卷积残差编码器
-        self.decoder = Spe_Spa_Atten_Decoder(out_embedding, 128, mid_channels=128)
-    def forward(self, x):
-        if x.dim() == 4:
-            x = x.unsqueeze(1)  # 增加一个维度到 [B, 1, C, H, W]
-        elif x.dim() != 5:
-            raise ValueError(f"Expected input dimension 4 or 5, but got {x.dim()}")
-        x = self.encoder(x)
-        x = self.decoder(x)
-        return x
 
 class Moco3D(nn.Module): # 单GPU训练的Moco框架
     def __init__(self, 

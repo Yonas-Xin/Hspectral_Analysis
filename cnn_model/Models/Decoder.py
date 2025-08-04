@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class deep_classfier(nn.Module):
-    def __init__(self, in_channels, out_channels, mid_channels=4096):
+    def __init__(self, in_channels, out_channels, mid_channels=1024):
         super().__init__()
         self.fc1 = nn.Linear(in_channels, mid_channels)
         # self.dropout = nn.Dropout(0.5)

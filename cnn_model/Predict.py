@@ -11,7 +11,7 @@ import numpy as np
 import torch
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-from cnn_model.Models.Models_New import MODEL_DICT
+from cnn_model.Models.Models import MODEL_DICT
 from datetime import datetime
 import traceback
 from multiprocessing import cpu_count

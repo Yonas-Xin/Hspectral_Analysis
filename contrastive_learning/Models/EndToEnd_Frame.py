@@ -68,7 +68,7 @@ def save_model(frame, model, optimizer, scheduler, epoch=None, avg_loss=None, av
         'best_acc': avg_acc,
         'scheduler': scheduler.state_dict() if scheduler else None,
         'current_lr': optimizer.param_groups[0]['lr'],
-        'backbone': model.encoder_q.state_dict(),
+        'backbone': model.encoder_q.encoder.state_dict(),
     }
     torch.save(state, frame.model_path)
     if is_best:
