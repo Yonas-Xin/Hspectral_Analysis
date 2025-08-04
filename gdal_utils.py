@@ -10,7 +10,24 @@ from datetime import datetime
 import time
 import sys
 nodata_value = 0
-
+GDAL2NP_TYPE = { # GDAL数据类型与numpy数据类型的映射
+    gdal.GDT_Byte: ('uint8', np.uint8),
+    gdal.GDT_UInt16: ('uint16', np.uint16),
+    gdal.GDT_Int16: ('int16', np.int16),
+    gdal.GDT_UInt32: ('uint32', np.uint32),
+    gdal.GDT_Int32: ('int32', np.int32),
+    gdal.GDT_Float32: ('float32', np.float32),
+    gdal.GDT_Float64: ('float64', np.float64)
+}
+NP2GDAL_TYPE = {
+    np.dtype('uint8'): gdal.GDT_Byte,
+    np.dtype('uint16'): gdal.GDT_UInt16,
+    np.dtype('int16'): gdal.GDT_Int16,
+    np.dtype('uint32'): gdal.GDT_UInt32,
+    np.dtype('int32'): gdal.GDT_Int32,
+    np.dtype('float32'): gdal.GDT_Float32,
+    np.dtype('float64'): gdal.GDT_Float64
+}
 def write_data_to_tif(output_file, data, geotransform, projection, nodata_value=nodata_value):
     """
     将数组数据写入GeoTIFF文件
@@ -35,10 +52,10 @@ def write_data_to_tif(output_file, data, geotransform, projection, nodata_value=
     else:
         raise ValueError("输入数据必须是二维或三维数组")
     
-    if data.dtype == np.int16:
-        dtype = gdal.GDT_Int16
-    else:
-        dtype = gdal.GDT_Float32
+    try:
+        dtype = NP2GDAL_TYPE[data.dtype]
+    except KeyError:
+        raise ValueError(f"不支持的数据类型: {data.dtype}. 支持的类型包括: {list(NP2GDAL_TYPE.keys())}")
     # 创建文件
     driver = gdal.GetDriverByName("GTiff")
     dataset = driver.Create(output_file, cols, rows, bands, dtype)
@@ -498,6 +515,12 @@ def clip_by_shp(out_dir, sr_img, point_shp, block_size=30, out_tif_name='img', f
     im_height = im_dataset.RasterYSize
     im_bands = im_dataset.RasterCount
 
+    band = im_dataset.GetRasterBand(1)
+    data_type = band.DataType # 获取数据类型
+    dtype_name, numpy_dtype = GDAL2NP_TYPE.get(data_type, ('unknown', None)) # 确定numpy数据类型
+    if dtype_name == 'unknown':
+        raise ValueError(f"不支持的GDAL数据类型: {data_type}")
+    
     # 读取样本点
     shp_dataset = ogr.Open(point_shp)
     if shp_dataset is None:
@@ -531,15 +554,13 @@ def clip_by_shp(out_dir, sr_img, point_shp, block_size=30, out_tif_name='img', f
         # 如果有有效区域可读取
         if read_width > 0 and read_height > 0: # 在影像范围内才进行裁剪
             if im_bands > 1:# 创建填充数组
-                full_data = np.full((im_bands, block_size, block_size), fill_value, dtype=np.float32)
+                full_data = np.full((im_bands, block_size, block_size), fill_value, dtype=numpy_dtype)
             else:
-                full_data = np.full((block_size, block_size), fill_value, dtype=np.float32)
+                full_data = np.full((block_size, block_size), fill_value, dtype=numpy_dtype)
             if read_width > 0 and read_height > 0:  
                 # 读取实际数据
                 if im_bands > 1:
                     data = im_dataset.ReadAsArray(read_x, read_y, read_width, read_height)
-                    if data.dtype == np.int16:
-                        data = data.astype(np.float32) * 1e-4 # 如何data是int类型，进行放缩并转化为float32类型
                     # 计算在填充数组中的位置
                     offset_x = read_x - x_start
                     offset_y = read_y - y_start
