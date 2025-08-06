@@ -565,8 +565,7 @@ def clip_by_shp(out_dir, sr_img, point_shp, block_size=30, out_tif_name='img', f
                     offset_x = read_x - x_start
                     offset_y = read_y - y_start
                     # 将数据放入填充数组
-                    for b in range(im_bands):
-                        full_data[b, offset_y:offset_y+read_height, offset_x:offset_x+read_width] = data[b]
+                    full_data[:, offset_y:offset_y+read_height, offset_x:offset_x+read_width] = data
                 else:
                     data = im_dataset.GetRasterBand(1).ReadAsArray(read_x, read_y, read_width, read_height)
                     if data.dtype == np.int16:

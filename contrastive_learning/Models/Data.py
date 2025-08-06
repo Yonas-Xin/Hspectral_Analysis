@@ -12,6 +12,7 @@ try:
     gdal.UseExceptions()
 except ImportError:
     print('gdal is not used')
+import random
 
 
 def read_tif_with_gdal(tif_path):
@@ -224,8 +225,7 @@ class DynamicCropDataset(Dataset):
                     data = data.astype(np.float32) * 1e-4
                 offset_x = read_x - x_start
                 offset_y = read_y - y_start
-                for b in range(self.im_bands):
-                    block[b, offset_y:offset_y+read_height, offset_x:offset_x+read_width] = data[b]
+                block[:, offset_y:offset_y+read_height, offset_x:offset_x+read_width] = data
             else:
                 data = self.im_dataset.GetRasterBand(1).ReadAsArray(read_x, read_y, read_width, read_height)
                 if data.dtype == np.int16:
@@ -247,3 +247,136 @@ class DynamicCropDataset(Dataset):
         """释放GDAL资源"""
         if hasattr(self, 'im_dataset') and self.im_dataset:
             self.im_dataset = None
+
+
+
+class Im_info(object):
+    """用于计算影像掩膜，记录影像信息"""
+    def __init__(self, image_path):
+        self.image_path = image_path
+        self.dataset = gdal.Open(image_path, gdal.GA_ReadOnly)
+        band = self.dataset.GetRasterBand(1)
+        self.no_data = band.GetNoDataValue()
+        self.rows, self.cols = self.dataset.RasterYSize, self.dataset.RasterXSize
+        self.backward_mask = self.ignore_backward()
+        self.im_width = self.dataset.RasterXSize # 影像宽，W
+        self.im_height = self.dataset.RasterYSize # 影像高，H
+        self.im_bands = self.dataset.RasterCount # 波段数
+
+    def ignore_backward(self):
+        '''分块计算背景掩膜值，默认分块大小为512'''
+        block_size = 512
+        if self.cols> (2 * block_size) and self.rows > (2 * block_size):
+            pass
+        else:
+            block_size = min(self.rows, self.cols) # 如果行列都较小，则使用行列最小值作为分块大小
+        mask = np.empty((self.rows, self.cols), dtype=bool)
+        for i in range(0, self.rows, block_size):
+            for j in range(0, self.cols, block_size):
+                # 计算当前块的实际高度和宽度（避免越界）
+                actual_rows = min(block_size, self.rows - i)
+                actual_cols = min(block_size, self.cols - j)
+                # 读取当前块的所有波段数据（形状: [bands, actual_rows, actual_cols]）
+                block_data = self.dataset.ReadAsArray(xoff=j, yoff=i, xsize=actual_cols, ysize=actual_rows)
+                block_mask = np.all(block_data == self.no_data, axis=0)
+                mask[i:i + actual_rows, j:j + actual_cols] = ~block_mask
+        return mask
+    
+    def __del__(self):
+        """释放GDAL资源"""
+        if hasattr(self, 'dataset') and self.dataset:
+            self.dataset = None
+
+class MultiImageRandomBlockSampler(object):
+    """多图像分块随机裁剪采样器，用于从多个图像中分区域随机选择图像块"""
+    def __init__(self, image_paths_list, block_size):
+        self.image_paths_list = image_paths_list
+        self.im_info_objs = [Im_info(image_path) for image_path in image_paths_list]
+        self.block_size = block_size
+        self.idx_list = [] # [(Im_info: np.array([0,2,3,...])),...]
+        self.out_list = [] # [(Im_info: 1), (Im_info: 98)...]
+        self.iters = 0
+
+        self.cal_area()
+        self.reset()
+    
+    def cal_area(self):
+        """计算每个数据的分块区域"""
+        image_block = self.block_size
+        for obj in self.im_info_objs:
+            mask = obj.backward_mask
+            nums = mask.size
+            rows, cols = mask.shape
+            idx_matrix = np.arange(nums).reshape(mask.shape)
+            for i in range(0, rows, image_block):
+                for j in range(0, cols, image_block):
+                    # 计算当前块的实际高度和宽度（避免越界）
+                    actual_rows = min(image_block, rows - i)  # 实际高
+                    actual_cols = min(image_block, cols - j)  # 实际宽
+                    block_idx = idx_matrix[i:i + actual_rows, j:j+actual_cols].reshape(-1)
+                    mask_idx = mask[i:i + actual_rows, j:j+actual_cols].reshape(-1)
+                    if np.any(mask_idx):
+                        block_idx = block_idx[mask_idx]
+                        self.idx_list.append((obj, block_idx))
+                    else:
+                        continue
+        self.iters = len(self.idx_list)
+    
+    def reset(self):
+        self.out_list = [(i[0], random.choice(i[1])) for i in self.idx_list]
+
+class MIRBS_Dataset(Dataset):
+    """多图像动态分块随机裁剪数据集，使用该类时请设置numworkers=0（经过实验，预先读取gdal数据会使得
+    加载数据更快，比多进程更快）。不适用多进程，应该也不适用分布式训练，如有需要，做一些适当的修改即可"""
+    def __init__(self, 
+                 image_paths_list, # 图像路径列表
+                 block_size):
+        self.MIRBS = MultiImageRandomBlockSampler(image_paths_list, block_size)
+        self.block_size= block_size
+        self.list = self.MIRBS.out_list
+        image = self.__getitem__(0)
+        self.data_shape = image.shape
+    
+    def reset(self): # 重置索引,外部调用
+        self.MIRBS.reset()
+        self.list = self.MIRBS.out_list
+
+    def __len__(self):
+        return self.MIRBS.iters
+    
+    def __getitem__(self, idx):
+        obj, index = self.list[idx]
+        im_width = obj.im_width
+        im_height = obj.im_height
+        im_bands = obj.im_bands
+        dataset = obj.dataset # 预先读取的gdal数据集，如果要实现多进程，这里修改为dataset = gdal.Open(obj.image_path)并删掉obj的dataset属性
+        row = index // im_width # 计算行索引
+        col = index % im_width # 计算列索引
+
+        # 计算裁剪窗口
+        block_size = self.block_size
+        left_top = int(block_size / 2 - 1) if block_size % 2 == 0 else int(block_size // 2)
+        right_bottom = int(block_size / 2) if block_size % 2 == 0 else int(block_size // 2)
+        col_start = col - left_top
+        row_start = row - left_top
+        col_end = col + right_bottom + 1
+        row_end = row + right_bottom + 1
+        
+        # 计算实际可读取范围
+        read_col = max(0, col_start)
+        read_row = max(0, row_start)
+        read_width = min(col_end, im_width) - read_col
+        read_height = min(row_end, im_height) - read_row
+        
+        # 创建并填充数组
+        block = np.full((im_bands, self.block_size, self.block_size), 
+                           0, dtype=np.float32)
+        if read_width > 0 and read_height > 0:
+            data = dataset.ReadAsArray(read_col, read_row, read_width, read_height)
+            if data.dtype == np.int16:
+                data = data.astype(np.float32) * 1e-4
+            offset_x = read_col - col_start
+            offset_y = read_row - row_start
+            block[:, offset_y:offset_y+read_height, offset_x:offset_x+read_width] = data
+        block = torch.from_numpy(block)
+        return block

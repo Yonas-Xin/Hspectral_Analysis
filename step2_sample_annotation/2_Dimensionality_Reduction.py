@@ -77,7 +77,7 @@ if __name__ == '__main__':
         device = torch.device('cuda')
         dataset = DynamicCropDataset(input_img, input_shp, block_size=17)
         dataloader = DataLoader(dataset, shuffle=False, batch_size=24)
-        model = Models.Spe_Spa_Attenres(24, dataset.data_shape)  # 模型实例化
+        model = Models.Ete_3D(24, dataset.data_shape)  # 模型实例化
         state_dict = torch.load(model_path, weights_only=True, map_location=device)
         model.load_state_dict(state_dict['model'])
         frame = Contrasive_learning_predict_frame(device=device)
