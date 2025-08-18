@@ -25,7 +25,7 @@ def read_tif_with_gdal(tif_path):
     return dataset
 
 class SSF(Dataset):
-    '''输入两个个list文件，list元素代表数据地址，一个存放窗口，一个存放光谱'''
+    '''输入两个个list文件, list元素代表数据地址, 一个存放窗口, 一个存放光谱'''
     def __init__(self, data_list, spectral_list, transform=None):
         """
         将列表划分为数据集,[batch, C, H, W] [batch, 1, sequence]
@@ -38,7 +38,7 @@ class SSF(Dataset):
     def __getitem__(self, idx):
         """
         根据索引返回图像及其标签
-        image（3，rows，cols）
+        image(3, rows, cols)
         """
         image_path = self.image_paths[idx]
         spectral_path = self.spectral_lists[idx]
@@ -52,7 +52,7 @@ class SSF(Dataset):
         return image, spectral
 
 class Dataset_3D(Dataset):
-    '''输入一个list文件，list元素代表数据地址'''
+    '''输入一个list文件, list元素代表数据地址'''
     def __init__(self, data_list, transform=None):
         """
         将列表划分为数据集,[batch, 1, H, w, bands]
@@ -66,7 +66,7 @@ class Dataset_3D(Dataset):
     def __getitem__(self, idx):
         """
         根据索引返回图像及其标签
-        image（3，rows，cols）
+        image(3, rows, cols)
         """
         image_path = self.image_paths[idx]
         image = read_tif_with_gdal(image_path)
@@ -102,7 +102,7 @@ class DynamicCropDataset(Dataset):
     参数:
         image_path (str): 原始影像路径
         point_shp (str): 点Shapefile路径
-        block_size (int): 裁剪块大小（像素）
+        block_size (int): 裁剪块大小(像素)
         transform (callable): 可选的数据增强变换
         fill_value (int/float): 边缘填充值
     """
@@ -136,7 +136,7 @@ class DynamicCropDataset(Dataset):
 
     
     def _load_point_coordinates(self):
-        """依次加载所有有效的点坐标（影像范围内的点）,为shp文件创建索引字段Emb_Idx,字段0为无编码点,字段1-n为有编码点"""
+        """依次加载所有有效的点坐标(影像范围内的点),为shp文件创建索引字段Emb_Idx,字段0为无编码点,字段1-n为有编码点"""
         coords = []
         driver = ogr.GetDriverByName('ESRI Shapefile')
         shp_dataset = driver.Open(self.point_shp, 1)  # 1 表示可写
@@ -251,7 +251,7 @@ class DynamicCropDataset(Dataset):
 
 
 class Im_info(object):
-    """用于计算影像掩膜，记录影像信息"""
+    """用于计算影像掩膜, 记录影像信息"""
     def __init__(self, image_path):
         self.image_path = image_path
         self.dataset = gdal.Open(image_path, gdal.GA_ReadOnly)
@@ -259,24 +259,24 @@ class Im_info(object):
         self.no_data = band.GetNoDataValue()
         self.rows, self.cols = self.dataset.RasterYSize, self.dataset.RasterXSize
         self.backward_mask = self.ignore_backward()
-        self.im_width = self.dataset.RasterXSize # 影像宽，W
-        self.im_height = self.dataset.RasterYSize # 影像高，H
+        self.im_width = self.dataset.RasterXSize # 影像宽, W
+        self.im_height = self.dataset.RasterYSize # 影像高, H
         self.im_bands = self.dataset.RasterCount # 波段数
 
     def ignore_backward(self):
-        '''分块计算背景掩膜值，默认分块大小为512'''
+        '''分块计算背景掩膜值, 默认分块大小为512'''
         block_size = 512
         if self.cols> (2 * block_size) and self.rows > (2 * block_size):
             pass
         else:
-            block_size = min(self.rows, self.cols) # 如果行列都较小，则使用行列最小值作为分块大小
+            block_size = min(self.rows, self.cols) # 如果行列都较小, 则使用行列最小值作为分块大小
         mask = np.empty((self.rows, self.cols), dtype=bool)
         for i in range(0, self.rows, block_size):
             for j in range(0, self.cols, block_size):
-                # 计算当前块的实际高度和宽度（避免越界）
+                # 计算当前块的实际高度和宽度(避免越界)
                 actual_rows = min(block_size, self.rows - i)
                 actual_cols = min(block_size, self.cols - j)
-                # 读取当前块的所有波段数据（形状: [bands, actual_rows, actual_cols]）
+                # 读取当前块的所有波段数据(形状: [bands, actual_rows, actual_cols])
                 block_data = self.dataset.ReadAsArray(xoff=j, yoff=i, xsize=actual_cols, ysize=actual_rows)
                 block_mask = np.all(block_data == self.no_data, axis=0)
                 mask[i:i + actual_rows, j:j + actual_cols] = ~block_mask
@@ -288,7 +288,7 @@ class Im_info(object):
             self.dataset = None
 
 class MultiImageRandomBlockSampler(object):
-    """多图像分块随机裁剪采样器，用于从多个图像中分区域随机选择图像块"""
+    """多图像分块随机裁剪采样器, 用于从多个图像中分区域随机选择图像块"""
     def __init__(self, image_paths_list, block_size):
         self.image_paths_list = image_paths_list
         self.im_info_objs = [Im_info(image_path) for image_path in image_paths_list]
@@ -310,7 +310,7 @@ class MultiImageRandomBlockSampler(object):
             idx_matrix = np.arange(nums).reshape(mask.shape)
             for i in range(0, rows, image_block):
                 for j in range(0, cols, image_block):
-                    # 计算当前块的实际高度和宽度（避免越界）
+                    # 计算当前块的实际高度和宽度(避免越界)
                     actual_rows = min(image_block, rows - i)  # 实际高
                     actual_cols = min(image_block, cols - j)  # 实际宽
                     block_idx = idx_matrix[i:i + actual_rows, j:j+actual_cols].reshape(-1)
@@ -326,8 +326,8 @@ class MultiImageRandomBlockSampler(object):
         self.out_list = [(i[0], random.choice(i[1])) for i in self.idx_list]
 
 class MIRBS_Dataset(Dataset):
-    """多图像动态分块随机裁剪数据集，使用该类时请设置numworkers=0（经过实验，预先读取gdal数据会使得
-    加载数据更快，比多进程更快）。不适用多进程，应该也不适用分布式训练，如有需要，做一些适当的修改即可"""
+    """多图像动态分块随机裁剪数据集, 使用该类时请设置numworkers=0(经过实验, 预先读取gdal数据会使得
+    加载数据更快, 比多进程更快)。不适用多进程, 应该也不适用分布式训练, 如有需要, 做一些适当的修改即可"""
     def __init__(self, 
                  image_paths_list, # 图像路径列表
                  block_size):
@@ -349,7 +349,7 @@ class MIRBS_Dataset(Dataset):
         im_width = obj.im_width
         im_height = obj.im_height
         im_bands = obj.im_bands
-        dataset = obj.dataset # 预先读取的gdal数据集，如果要实现多进程，这里修改为dataset = gdal.Open(obj.image_path)并删掉obj的dataset属性
+        dataset = obj.dataset # 预先读取的gdal数据集, 如果要实现多进程, 这里修改为dataset = gdal.Open(obj.image_path)并删掉obj的dataset属性
         row = index // im_width # 计算行索引
         col = index % im_width # 计算列索引
 

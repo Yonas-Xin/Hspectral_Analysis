@@ -4,6 +4,49 @@ import kornia.augmentation as K
 from typing import Tuple
 import random
 
+from typing import Any, Dict, Optional, Tuple, Union
+from kornia.augmentation import random_generator as rg
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.core import Tensor, where
+from kornia.geometry.bbox import bbox_generator, bbox_to_mask
+
+class RandomErasing_Fixed(IntensityAugmentationBase2D):
+    """随机擦除改写，擦除矩形区域的所有像元，但是必须保留图像块中心像元"""
+    def __init__(
+        self,
+        scale: Union[Tensor, Tuple[float, float]] = (0.02, 0.33),
+        ratio: Union[Tensor, Tuple[float, float]] = (0.3, 3.3),
+        value: float = 0.0,
+        same_on_batch: bool = False,
+        p: float = 0.5,
+        keepdim: bool = False,
+    ) -> None:
+        super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
+        self.scale = scale
+        self.ratio = ratio
+        self.value = value
+        self._param_generator = rg.RectangleEraseGenerator(scale, ratio, value)
+        self.center_index = None
+
+    def apply_transform(
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
+        batch, c, h, w = input.size()
+        if self.center_index == None:
+            left_top = int(h / 2 - 1) if h % 2 == 0 else int(h // 2) # 计算中心位置左上坐标
+            self.center_index = torch.ones((c,h,w))
+            self.center_index[:, left_top, left_top] = 0
+        values = params["values"].unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).repeat(1, *input.shape[1:]).to(input)
+
+        bboxes = bbox_generator(params["xs"], params["ys"], params["widths"], params["heights"])
+        mask = bbox_to_mask(bboxes, w, h)  # Returns B, H, W
+        mask = mask.unsqueeze(1).repeat(1, c, 1, 1).to(input)  # Transform to B, c, H, W
+        center_mask = self.center_index.unsqueeze(0).repeat(batch, 1, 1, 1).to(input)
+        mask = mask * center_mask
+        transformed = where(mask == 1.0, values, input)
+        return transformed
+
+
 class RandomSpectralMask(nn.Module):
     """随机掩膜每个像元光谱波段"""
     def __init__(self, mask_prob: float = 0.5, p: float = 0.5):
@@ -24,6 +67,7 @@ class RandomSpectralMask(nn.Module):
         return x * mask
 
 class BandDropout(nn.Module):
+    """随机对某个光谱波段全丢弃"""
     def __init__(self, p=0.2, drop_prob=0.5):
         super().__init__()
         # self.dropout = nn.Dropout3d(p)  # 3D Dropout
@@ -47,7 +91,7 @@ class HighDimBatchAugment(nn.Module):
     """高维图像块（如高光谱[B,C,H,W]）的批量增强"""
     def __init__(
             self,
-            crop_size: Tuple[int, int],
+            # crop_size: Tuple[int, int],
             spectral_mask_prob: float,
             band_dropout_prob:float,
             flip_prob: float = 0.5,
@@ -55,8 +99,8 @@ class HighDimBatchAugment(nn.Module):
             add_gaussian_prob: float=0.5,
             erase_prob: float = 0.5,
             rotate_degrees: float = 90.0,
-            crop_scale: Tuple[float, float] = (0.8, 1.0),
-            crop_ratio: Tuple[float, float] = (0.9, 1.1),
+            # crop_scale: Tuple[float, float] = (0.8, 1.0),
+            # crop_ratio: Tuple[float, float] = (0.9, 1.1),
             noise_std: float = 0.01,
             erase_scale: Tuple[float, float] = (0.01, 0.3),
             erase_ratio: Tuple[float, float] = (0.4, 2.5),
@@ -67,17 +111,17 @@ class HighDimBatchAugment(nn.Module):
         # 初始化增强操作
         self.flip = K.RandomHorizontalFlip(p=flip_prob)
         self.rotate = K.RandomRotation(degrees=rotate_degrees, p=rotate_prob)
-        self.crop = K.RandomResizedCrop(
-            size=crop_size,
-            scale=crop_scale,
-            ratio=crop_ratio,
-            resample='bilinear'
-        )
+        # self.crop = K.RandomResizedCrop(
+        #     size=crop_size,
+        #     scale=crop_scale,
+        #     ratio=crop_ratio,
+        #     resample='bilinear'
+        # )
         self.add_gaussian = K.RandomGaussianNoise(
             mean=0.0, std=noise_std, p=add_gaussian_prob, same_on_batch=False
         )
 
-        self.erase = K.RandomErasing(
+        self.erase = RandomErasing_Fixed(
             p=erase_prob, scale=erase_scale, ratio=erase_ratio, value=0
         )
         if spectral_mask_prob > 0:
@@ -100,11 +144,11 @@ class HighDimBatchAugment(nn.Module):
         # （所有操作自动支持批量）
         x = self.flip(x, inplace=True)  # 随机水平翻转
         x = self.rotate(x)  # 随机旋转
-        x = self.crop(x)  # 随机裁剪
+        # x = self.crop(x)  # 随机裁剪
         x = self.add_gaussian(x) # 随机添加高斯噪声
         x = self.erase(x) # 随机擦除
         if self.spectral_mask is not None:
-            x = self.spectral_mask(x) # 光谱随机掩膜\
+            x = self.spectral_mask(x) # 光谱随机掩膜
         if self.band_dropout is not None:
             x = self.band_dropout(x) # 随机丢弃波段
         return x
@@ -183,10 +227,10 @@ if __name__ == "__main__":
             img = tensor[list(band_indices), :, :].transpose(1, 2, 0)
             
             # Normalize each band to [0,1] range
-            # for band in range(img.shape[-1]):
-            #     band_data = img[:, :, band]
-            #     normalized = (band_data - band_data.min()) / (band_data.max() - band_data.min() + 1e-8)
-            #     img[:, :, band] = normalized
+            for band in range(img.shape[-1]):
+                band_data = img[:, :, band]
+                normalized = (band_data - band_data.min()) / (band_data.max() - band_data.min() + 1e-8)
+                img[:, :, band] = normalized
                 
             return img
         
@@ -260,7 +304,7 @@ if __name__ == "__main__":
     dataset = read_dataset_from_txt(txt_file)
     dataset = Dataset_3D(dataset)
     dataloader = DataLoader(dataset, shuffle=False, batch_size=2)
-    feature_transform = HighDimBatchAugment(crop_size=(17,17), )
+    feature_transform = HighDimBatchAugment(crop_size=(17,17), spectral_mask_prob=0.5, band_dropout_prob=0.5)
     device = torch.device('cuda' if torch.cuda.is_available else 'cpu')
 
     for imgs, labels in dataloader:
@@ -269,8 +313,8 @@ if __name__ == "__main__":
         with torch.no_grad():
             img_enhance = feature_transform.forward(imgs).cpu().numpy()
             print(img_enhance.shape)
-        # visualize_comparison(imgs[0], img_enhance[0])
-        # visualize_comparison(imgs[1], img_enhance[1])
+        visualize_comparison(imgs[0], img_enhance[0])
+        visualize_comparison(imgs[1], img_enhance[1])
 
         imgs = imgs[0].cpu().numpy().transpose(1,2,0).reshape(-1, C)
 
