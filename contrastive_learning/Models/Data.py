@@ -332,7 +332,9 @@ class MIRBS_Dataset(Dataset):
                  image_paths_list, # 图像路径列表
                  block_size):
         self.MIRBS = MultiImageRandomBlockSampler(image_paths_list, block_size)
-        self.block_size= block_size
+        self.block_size = block_size
+        self.left_top = int(block_size / 2 - 1) if block_size % 2 == 0 else int(block_size // 2)
+        self.right_bottom = int(block_size / 2) if block_size % 2 == 0 else int(block_size // 2)
         self.list = self.MIRBS.out_list
         image = self.__getitem__(0)
         self.data_shape = image.shape
@@ -354,13 +356,10 @@ class MIRBS_Dataset(Dataset):
         col = index % im_width # 计算列索引
 
         # 计算裁剪窗口
-        block_size = self.block_size
-        left_top = int(block_size / 2 - 1) if block_size % 2 == 0 else int(block_size // 2)
-        right_bottom = int(block_size / 2) if block_size % 2 == 0 else int(block_size // 2)
-        col_start = col - left_top
-        row_start = row - left_top
-        col_end = col + right_bottom + 1
-        row_end = row + right_bottom + 1
+        col_start = col - self.left_top
+        row_start = row - self.left_top
+        col_end = col + self.right_bottom + 1
+        row_end = row + self.right_bottom + 1
         
         # 计算实际可读取范围
         read_col = max(0, col_start)

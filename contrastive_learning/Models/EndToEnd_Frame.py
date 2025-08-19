@@ -73,7 +73,7 @@ def save_model(frame, model, optimizer, scheduler, epoch=None, avg_loss=None, av
     torch.save(state, frame.model_path)
     if is_best:
         shutil.copyfile(frame.model_path, frame.model_best_path)
-        print(f"============The best checkpoint saved at epoch {epoch + 1}============")
+        print(f"============The best checkpoint saved at epoch {epoch}============")
 
 def clean_up(frame):
     """清理因终端或异常生成的文件"""
@@ -105,6 +105,14 @@ def load_parameter(frame, model, optimizer, scheduler=None, ck_pth=None, load_fr
             print(f"Loaded checkpoint from epoch {frame.start_epoch}, current lr {optimizer.param_groups[0]['lr']}")
 
 def train(frame, model, optimizer, dataloader, scheduler=None, ck_pth=None, clean_noise_samples=False, load_from_ck=False, clean_th=0.99):
+    def finish_work():
+        try:
+            result = f'Model saved at Epoch{model_save_epoch}. \nThe best top1-acc:{frame.epoch_max_acc}. \nThe best training_loss:{frame.train_epoch_min_loss}'
+            run_time = cal_time(time.time() - start_time)
+            log_writer.write(result + '\n')
+            log_writer.write("Program runtime:" + run_time + '\n')
+            print(result + '\n' + run_time)
+        except:pass
     start_time = time.time()
     log_writer = open(frame.log_path, 'w')
     if not os.path.exists(frame.tensorboard_dir):
@@ -120,10 +128,11 @@ def train(frame, model, optimizer, dataloader, scheduler=None, ck_pth=None, clea
     loss_note = AverageMeter("Loss", ":.6f")
     top1_acc_note = AverageMeter("Top1-Accuracy", ":.4f")
     top5_acc_note = AverageMeter("Top5-Accuracy", ":.4f") 
-    Epoch_wirter = ProgressMeter(frame.epochs, len(dataloader), [loss_note, top1_acc_note, top5_acc_note], "\nBatch")
+    Epoch_wirter = ProgressMeter(frame.epochs, len(dataloader), [loss_note, top1_acc_note, top5_acc_note], "\nStep")
     # start training
     try:
-        for epoch in range(frame.start_epoch, frame.epochs):
+        for epoch in range(frame.start_epoch+1, frame.epochs+1):
+            print(f'Epoch {epoch}:')
             for i,block in tqdm(enumerate(dataloader), total=len(dataloader), desc="Train", leave=True):
                 block = block.to(frame.device) # batch,C,H,W
                 batchs = block.size(0)
@@ -144,7 +153,7 @@ def train(frame, model, optimizer, dataloader, scheduler=None, ck_pth=None, clea
                     Epoch_wirter.display(i+1)
 
             current_lr = optimizer.param_groups[0]['lr']
-            epoch_summary = Epoch_wirter.epoch_summary(epoch+1, f"Lr:{current_lr:.2e}")
+            epoch_summary = Epoch_wirter.epoch_summary(epoch, f"Lr:{current_lr:.2e}")
             log_writer.write(epoch_summary + '\n') # 记录训练过程
             tensor_writer.add_scalar('Train/Loss', loss_note.avg, epoch) # 记录到tensorboard
             tensor_writer.add_scalar('Train/Top1', top1_acc_note.avg, epoch)
@@ -172,19 +181,15 @@ def train(frame, model, optimizer, dataloader, scheduler=None, ck_pth=None, clea
             top1_acc_note.reset()
             top5_acc_note.reset()
             log_writer.flush()
-        # 打印和记录结果
-        result = f'Model saved at Epoch{model_save_epoch}. \nThe best top1-acc:{frame.epoch_max_acc}. \nThe best training_loss:{frame.train_epoch_min_loss}'
-        run_time = cal_time(time.time() - start_time)
-        log_writer.write(result + '\n')
-        log_writer.write("Program runtime:" + run_time + '\n')
-        print(result)
-        print(run_time)
+        finish_work()
     except KeyboardInterrupt: # 捕获键盘中断信号
+        finish_work()
         log_writer.close()
         tensor_writer.close()
         print(f"Training interrupted due to: KeyboardInterrupt")
         clean_up(frame=frame)
     except Exception as e: 
+        finish_work()
         log_writer.close()
         tensor_writer.close()
         print(traceback.format_exc())  # 打印完整的堆栈跟踪

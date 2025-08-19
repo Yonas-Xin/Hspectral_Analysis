@@ -11,7 +11,6 @@ import numpy as np
 import torch
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-from cnn_model.Models.Models import MODEL_DICT
 from datetime import datetime
 import traceback
 from multiprocessing import cpu_count
@@ -85,18 +84,15 @@ if __name__ == '__main__':
     out_classes = 8
     block_size = 17
     batch = 128
-    input_data = r"C:\Users\85002\OneDrive - cugb.edu.cn\研究区地图数据\研究区影像数据\research_area1.dat"
-    model_pth = 'D:\Programing\pythonProject\Hspectral_Analysis\cnn_model\_results\models_pth\Res_3D_18Net_202507291104.pth'  # 模型路径
+    input_data = r"C:\Users\85002\OneDrive - cugb.edu.cn\项目数据\张川铀资源\ZY_result\Image\research_area1.dat"
+    model_pth = 'D:\Programing\pythonProject\Hspectral_Analysis\cnn_model\_results\SRACN-SRACN_spectral0.5_band0_Emd128_202508191259\SRACN-SRACN_spectral0.5_band0_Emd128_202508191259_best.pt'  # 模型路径
     csv_output_path = 'out.tif'
+    rgb_combine = (29,19,9) # 绘制图像时的rgb组合Z
+
 
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     dataloader_num_workers = cpu_count() // 4 # 根据cpu核心数自动决定num_workers数量
-    data_shape = None
-    model = None
     image_block_size = 512
-    out_embedding = 1024
-    rgb_combine = (29,19,9) # 绘制图像时的rgb组合
-
     left_top = int(block_size / 2 - 1) if block_size % 2 == 0 else int(block_size // 2)
     right_bottom = int(block_size / 2) if block_size % 2 == 0 else int(block_size // 2)
     current_time = datetime.now().strftime("%Y%m%d%H%M")  # 记录系统时间
@@ -106,23 +102,13 @@ if __name__ == '__main__':
     img = Hyperspectral_Image()
     img.init(input_data)
     predict_whole_map = np.empty((img.rows,img.cols), dtype=np.int16)
+    model = torch.load(model_pth, weights_only=False, map_location=device)
     try:
         with torch.no_grad():
             for image_block, background_mask, i, j in img.block_images(image_block=image_block_size, block_size=block_size):
                 dataset = Block_Generator(image_block, block_size=block_size, backward_mask=background_mask)
                 predict_data = torch.empty(len(dataset), dtype=torch.int16, device=device) # 预分配内存，用来储存预测结果
                 rows, cols = dataset.rows, dataset.cols
-
-                if data_shape is None:
-                    data_shape = dataset.image_shape
-
-                if model is None: # 进行模型的初始化和参数读取
-                    model = MODEL_DICT[model_name](out_embeddings=out_embedding, out_classes=out_classes) # 在这里进行模型初始化
-                    if model_pth is not None:
-                        dic = torch.load(model_pth, weights_only=True, map_location=device)['model']
-                        model.load_state_dict(dic)
-                        print("模型加载成功")
-                    else: raise ValueError("The model pth must be valid!")
 
                 predict_map = np.zeros((rows, cols), dtype=np.int16) - 1 # 初始化一个空的预测矩阵，-1代表背景值
                 if np.any(background_mask == True): # 如果

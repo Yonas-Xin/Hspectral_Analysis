@@ -18,11 +18,12 @@ class My_Model(nn.Module):
         for param in self.encoder.fc.parameters():
             param.requires_grad = True # encoder 的fc层需要正常梯度传播
         
-        try:
-            for param in self.encoder.layer4.parameters():
-                param.requires_grad = True
-        except:
-            print("Warning: layer4 not found in encoder, skipping unfreeze.")
+        # 这里自由解冻其他层
+        # try:
+        #     for param in self.encoder.layer4.parameters():
+        #         param.requires_grad = True
+        # except:
+        #     print("Warning: layer4 not found in encoder, skipping unfreeze.")
 
     def _load_encoer_params(self, state_dict):
         try:
@@ -42,10 +43,10 @@ class My_Model(nn.Module):
                 print(f"Skipped loading these keys due to size mismatch: {skipped}")
 
 class Res_3D_18Net(My_Model):
-    def __init__(self, out_classes, out_embeddings=1024, in_shape=None):
+    def __init__(self, out_classes, out_embedding=1024, in_shape=None):
         super().__init__()
-        self.encoder = ResNet_3D(block=Basic_Residual_block, layers=[2,2,2,2], num_classes=out_embeddings) # 3d卷积残差编码器
-        self.decoder = deep_classfier(out_embeddings, out_classes, mid_channels=1024)
+        self.encoder = ResNet_3D(block=Basic_Residual_block, layers=[2,2,2,2], num_classes=out_embedding) # 3d卷积残差编码器
+        self.decoder = deep_classfier(out_embedding, out_classes, mid_channels=1024)
     def forward(self, x):
         if x.dim() == 4:
             x = x.unsqueeze(1)  # 增加一个维度到 [B, 1, C, H, W]
@@ -56,10 +57,10 @@ class Res_3D_18Net(My_Model):
         return x
 
 class Res_3D_34Net(My_Model):
-    def __init__(self, out_classes, out_embeddings=1024, in_shape=None):
+    def __init__(self, out_classes, out_embedding=1024, in_shape=None):
         super().__init__()
-        self.encoder = ResNet_3D(block=Basic_Residual_block, layers=[3,4,6,3], num_classes=out_embeddings) # 3d卷积残差编码器
-        self.decoder = deep_classfier(out_embeddings, out_classes, mid_channels=1024)
+        self.encoder = ResNet_3D(block=Basic_Residual_block, layers=[3,4,6,3], num_classes=out_embedding) # 3d卷积残差编码器
+        self.decoder = deep_classfier(out_embedding, out_classes, mid_channels=1024)
     def forward(self, x):
         if x.dim() == 4:
             x = x.unsqueeze(1)  # 增加一个维度到 [B, 1, C, H, W]
@@ -70,10 +71,10 @@ class Res_3D_34Net(My_Model):
         return x
     
 class Res_3D_50Net(My_Model):
-    def __init__(self, out_classes, out_embeddings=1024, in_shape=None):
+    def __init__(self, out_classes, out_embedding=1024, in_shape=None):
         super().__init__()
-        self.encoder = ResNet_3D(block=Bottleneck_Residual_block, layers=[3,4,6,3], num_classes=out_embeddings) # 3d卷积残差编码器
-        self.decoder = deep_classfier(out_embeddings, out_classes, mid_channels=1024)
+        self.encoder = ResNet_3D(block=Bottleneck_Residual_block, layers=[3,4,6,3], num_classes=out_embedding) # 3d卷积残差编码器
+        self.decoder = deep_classfier(out_embedding, out_classes, mid_channels=1024)
     def forward(self, x):
         if x.dim() == 4:
             x = x.unsqueeze(1)  # 增加一个维度到 [B, 1, C, H, W]

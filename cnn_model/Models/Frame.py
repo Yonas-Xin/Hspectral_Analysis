@@ -11,6 +11,7 @@ import torch
 import shutil
 from utils import AverageMeter, ProgressMeter, topk_accuracy
 import traceback
+from torch.utils.data import DataLoader
 
 class Cnn_Model_Frame:
     def __init__(self, model_name, min_lr=1e-7, epochs=300, device=None, if_full_cpu=True, gradually_unfreeze=True):
@@ -36,6 +37,7 @@ class Cnn_Model_Frame:
             
         self.model_path = os.path.join(self.model_dir, f'{model_save_name}.pth')
         self.model_best_path = os.path.join(self.model_dir, f'{model_save_name}_best.pth')
+        self.model_best_path_pt = os.path.join(self.model_dir, f'{model_save_name}_best.pt')
         self.log_path = os.path.join(self.model_dir, f'{model_save_name}.log')
         self.tensorboard_dir = os.path.join(self.model_dir , f'tensorboard_logs')
 
@@ -100,9 +102,16 @@ def save_model(frame, model, optimizer, scheduler, epoch=None, avg_loss=None, av
     torch.save(state, frame.model_path)
     if is_best:
         shutil.copyfile(frame.model_path, frame.model_best_path)
-        print(f"============The best checkpoint saved at epoch {epoch + 1}============")
+        torch.save(model, frame.model_best_path_pt) # 保存整个模型结构
+        print(f"============The best checkpoint saved at epoch {epoch}============")
 
 def train(frame, model, optimizer, train_dataloader, eval_dataloader=None, scheduler=None, ck_pth=None, load_from_ck=False):
+    def finish_work():
+        best_result = f'Model saved at Epoch{model_save_epoch}. \nThe best training_acc:{best_train_accuracy:.6f}%.\nThe best testing_acc:{best_test_accuracy:.6f}%'
+        log_writer.write(best_result + '\n')
+        print(best_result)
+        if eval_dataloader is not None:
+            print_result_report(frame=frame, model=model, ck_pth=frame.model_best_path, eval_dataloader=eval_dataloader, log_writer=log_writer) # 训练完成打印报告
     log_writer = open(frame.log_path, 'w')
     if not os.path.exists(frame.tensorboard_dir):
         os.makedirs(frame.tensorboard_dir)
@@ -121,7 +130,8 @@ def train(frame, model, optimizer, train_dataloader, eval_dataloader=None, sched
                                     [train_loss_note, train_acc_note, test_loss_note, test_acc_note],
                                     prefix="Batch")
     try:
-        for epoch in range(frame.start_epoch, frame.epochs):
+        for epoch in range(frame.start_epoch+1, frame.epochs+1):
+            print(f'Epoch {epoch}:')
             model.train()  # 开启训练模式，自训练没有测试模式，所以这个可以在训练之前设置
             if frame.GRAGUALLY_UNFRREZE: # 添加逐级解冻策略
                 try:
@@ -165,7 +175,7 @@ def train(frame, model, optimizer, train_dataloader, eval_dataloader=None, sched
             else:
                 if scheduler is not None:
                     scheduler.step()
-            result = progress_writer.epoch_summary(epoch+1, f"Lr: {current_lr:.2e}")
+            result = progress_writer.epoch_summary(epoch, f"Lr: {current_lr:.2e}")
             tensor_writer.add_scalars('Loss', {'Train': train_avg_loss}, epoch)
             tensor_writer.add_scalars('Accuracy', {'Train': train_accuracy}, epoch)
             tensor_writer.add_scalars('Loss', {'Test': test_avg_loss}, epoch)
@@ -194,19 +204,15 @@ def train(frame, model, optimizer, train_dataloader, eval_dataloader=None, sched
                     is_best = True
             save_model(frame=frame, model=model, optimizer=optimizer, scheduler=scheduler, epoch=epoch, 
                        avg_loss=test_avg_loss, avg_acc=test_accuracy, is_best=is_best)
-
-
-        best_result = f'Model saved at Epoch{model_save_epoch}. \nThe best training_acc:{best_train_accuracy:.6f}%.\nThe best testing_acc:{best_test_accuracy:.6f}%'
-        log_writer.write(best_result + '\n')
-        print(best_result)
-        if eval_dataloader is not None:
-            print_result_report(frame=frame, model=model, ck_pth=frame.model_best_path, eval_dataloader=eval_dataloader, log_writer=log_writer) # 训练完成打印报告
+        finish_work()
     except KeyboardInterrupt: # 捕获键盘中断信号
+        finish_work()
         log_writer.close()
         tensor_writer.close()
         print(f"Training interrupted due to: KeyboardInterrupt")
         clean_up(frame=frame)
     except Exception as e: 
+        finish_work()
         log_writer.close()
         tensor_writer.close()
         print(traceback.format_exc())  # 打印完整的堆栈跟踪
@@ -217,6 +223,12 @@ def train(frame, model, optimizer, train_dataloader, eval_dataloader=None, sched
         sys.exit(0)
     
 def print_result_report(frame, model, ck_pth, eval_dataloader, log_writer):
+    eval_dataloader = DataLoader( # 重新建立一个迭代器
+        eval_dataloader.dataset,
+        batch_size=eval_dataloader.batch_size,
+        shuffle=False,
+        num_workers=0
+    )
     checkpoint = torch.load(ck_pth, weights_only=True, map_location=frame.device)
     model.load_state_dict(checkpoint['model']) # 从保存的最佳模型中加载参数
     model.eval()

@@ -13,15 +13,16 @@ from multiprocessing import cpu_count
 import math
 
 if __name__ == '__main__':
-    model_name = "Res_3D_18Net" # 使用model_name 与模型库模型匹配
-    config_name = "TL" # 配置名称
+    model_name = "SRACN" # 使用model_name 与模型库模型匹配
+    config_name = "SRACN_spectral0.5_band0_Emd128" # 配置名称
     out_classes = 8 # 分类数
     epochs = 100 # epoch
     batch = 12 # batch
     init_lr = 1e-3  # lr
     min_lr = 1e-6  # 最低学习率
     GRAGUALLY_UNFRREZE = True
-    pretrain_pth = r'C:\Users\85002\Downloads\Moco_Res18_202507242008.pth'
+    # pretrain_pth = r'C:\Users\85002\Downloads\Ete_spectral0.5_band0_Emd128_202508181553_best.pth'
+    pretrain_pth = None
     train_images_dir = r'C:\Users\85002\Desktop\TempDIR\ZY-01-Test\handle_dataset_8classes_400samplesnew\Atrain_datasets.txt'  # 训练数据集
     test_images_dir = r'C:\Users\85002\Desktop\TempDIR\ZY-01-Test\handle_dataset_8classes_400samplesnew\Aeval_datasets.txt'  # 测试数据集
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # 显卡设置
@@ -29,7 +30,7 @@ if __name__ == '__main__':
     load_from_ck = False  # 从断点处开始训练
     if_full_cpu = True  # 是否全负荷cpu
 
-    out_embeddings = 1024
+    out_embedding = 128
     # unfreeze_list = [20]
     step_size = epochs // (math.log10(init_lr // min_lr) + 1) # 自动计算学习率调度器的步长
     dataloader_num_workers = cpu_count() // 4 # 根据cpu核心数自动决定num_workers数量
@@ -40,7 +41,7 @@ if __name__ == '__main__':
     try:
         train_dataset = DATASET_DICT[model_name](train_image_lists)
         eval_dataset = DATASET_DICT[model_name](test_image_lists)
-        model = MODEL_DICT[model_name](out_classes=out_classes, out_embeddings=out_embeddings, in_shape=train_dataset.data_shape)  # 模型实例化
+        model = MODEL_DICT[model_name](out_classes=out_classes, out_embedding=out_embedding, in_shape=train_dataset.data_shape)  # 模型实例化
     except KeyError as k:
         raise KeyError('model name must be "SARCN", "Shallow_1DCNN" or "Shallow_3DCNN"')
     print(f"Image shape: {train_dataset.data_shape}")
