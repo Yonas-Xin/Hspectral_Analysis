@@ -18,12 +18,7 @@ class My_Model(nn.Module):
         for param in self.encoder.fc.parameters():
             param.requires_grad = True # encoder 的fc层需要正常梯度传播
         
-        # 这里自由解冻其他层
-        # try:
-        #     for param in self.encoder.layer4.parameters():
-        #         param.requires_grad = True
-        # except:
-        #     print("Warning: layer4 not found in encoder, skipping unfreeze.")
+
 
     def _load_encoer_params(self, state_dict):
         try:
@@ -123,6 +118,14 @@ class Constrastive_learning_Model(My_Model):
             raise ValueError("in_shape must be provided for the model.")
         self.encoder = Spe_Spa_Attenres_Encoder(in_shape=in_shape, out_embedding=out_embedding)
         self.decoder = deep_classfier(out_embedding, out_classes, mid_channels=1024)
+
+    def _freeze_encoder(self):
+        super()._freeze_encoder()
+        #    这里自由解冻其他层
+        # for param in self.encoder.res_block6.parameters():
+        #     param.requires_grad = True
+        # print('最外层已解冻')
+
     def forward(self, x):
         if x.dim() == 4:
             x = x.unsqueeze(1)  # 增加一个维度到 [B, 1, C, H, W]

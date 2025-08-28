@@ -470,14 +470,15 @@ class Hyperspectral_Image:
                 block_sampling_mask = self.backward_mask[i:i + row_block, j:j + col_block]
                 yield block_data, block_sampling_mask, i, j
 
-    def save_tif(self, filename, img_data):
+    def save_tif(self, filename, img_data, nodata = None):
         '''将(rows, cols,  bands)或(rows, cols)的数据存为tif格式, tif具有与img相同的投影信息'''
+        nodata = self.no_data if nodata is None else nodata
         if len(img_data.shape) == 3:
             write_data_to_tif(filename, img_data.transpose(2,0,1), self.dataset.GetGeoTransform(), self.dataset.GetProjection(),
-                          nodata_value=self.no_data)
+                          nodata_value=nodata)
         elif len(img_data.shape) == 2:
             write_data_to_tif(filename, img_data, self.dataset.GetGeoTransform(), self.dataset.GetProjection(),
-                nodata_value=self.no_data)
+                nodata_value=nodata)
         else:
             raise ValueError("The input dims must be 2 or 3")
         return True
