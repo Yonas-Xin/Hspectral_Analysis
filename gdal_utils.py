@@ -9,6 +9,8 @@ from tqdm import tqdm
 from datetime import datetime
 import time
 import sys
+import random
+
 nodata_value = 0
 GDAL2NP_TYPE = { # GDAL数据类型与numpy数据类型的映射
     gdal.GDT_Byte: ('uint8', np.uint8),
@@ -37,7 +39,7 @@ def write_data_to_tif(output_file, data, geotransform, projection, nodata_value=
         data (np.ndarray): 三维数组（波段,行,列）
         geotransform (tuple): 6参数地理变换
         projection (str): WKT格式的坐标参考系统
-        nodata_value (int/float): NoData值，默认0
+        nodata_value (int/float): NoData值, 默认0
     
     异常:
         IOError: 当文件创建失败时
@@ -90,14 +92,14 @@ def read_ori_tif(tif_path):
 
 def crop_image_by_mask(data, mask, geotransform, projection, filepath, block_size=30, name="Block_"):
     """
-    根据 mask 的类别，裁剪影像为 30x30 的小块
-    :param data: 输入影像，(C, H, W)
-    :param mask: 二维 mask，形状为 (rows, cols)，背景为0，其他为类别
-    :param block_size: 每个块的大小，默认为30
+    根据 mask 的类别, 裁剪影像为 30x30 的小块
+    :param data: 输入影像, (C, H, W)
+    :param mask: 二维 mask, 形状为 (rows, cols), 背景为0, 其他为类别
+    :param block_size: 每个块的大小, 默认为30
     :return: ndarray,(nums,block_size,block_size,bands)
     """
     bands, rows, cols = data.shape
-    if block_size%2 == 0:#如果block_size是一偶数，以像素点为中心，左上角区域比右下角区域少一
+    if block_size%2 == 0:#如果block_size是一偶数, 以像素点为中心，左上角区域比右下角区域少一
         left_top = int(block_size/2-1)
         right_bottom = int(block_size/2)
     else:
@@ -481,10 +483,10 @@ def clip_by_shp(out_dir, sr_img, point_shp, block_size=30, out_tif_name='img', f
         block_size (int): 裁剪块大小（像素），默认30
         out_tif_name (str): 输出文件名前缀，默认'img'
         fill_value (int/float): 边缘填充值，默认0
-        value (int): 为输出文件名添加的标签值，默认None
+        value (int): 为输出文件名添加的标签值, 默认None
     
     返回:
-        list: 生成的图像路径列表，格式为["path1.tif label1", "path2.tif label2", ...]
+        list: 生成的图像路径列表, 格式为["path1.tif label1", "path2.tif label2", ...]
     
     异常:
         RuntimeError: 当无法打开输入文件时
@@ -569,7 +571,7 @@ def clip_by_shp(out_dir, sr_img, point_shp, block_size=30, out_tif_name='img', f
                 else:
                     data = im_dataset.GetRasterBand(1).ReadAsArray(read_x, read_y, read_width, read_height)
                     if data.dtype == np.int16:
-                        data = data.astype(np.float32) * 1e-4 # 如何data是int类型，进行放缩并转化为float32类型
+                        data = data.astype(np.float32) * 1e-4 # 如何data是int类型, 进行放缩并转化为float32类型
                     offset_x = read_x - x_start
                     offset_y = read_y - y_start
                     full_data[offset_y:offset_y+read_height, offset_x:offset_x+read_width] = data
@@ -598,15 +600,15 @@ def clip_by_shp(out_dir, sr_img, point_shp, block_size=30, out_tif_name='img', f
 
 def clip_by_multishp(out_dir, sr_img, point_shp_dir, block_size=30, out_tif_name='img', fill_value=0):
     """
-    批量处理目录下多个Shapefile的裁剪任务，并自动生成记录样本块与标签的数据集
+    批量处理目录下多个Shapefile的裁剪任务, 并自动生成记录样本块与标签的数据集
     
     参数:
         out_dir (str): 输出目录路径
         sr_img (str/gdal.Dataset): 输入影像路径或已打开的GDAL数据集对象  
         point_shp_dir (str): 包含点Shapefiles的目录路径或者是一个Shapefile文件路径
-        block_size (int): 裁剪块大小（像素），默认30
-        out_tif_name (str): 输出文件名前缀，默认'img'
-        fill_value (int/float): 边缘填充值，默认0
+        block_size (int): 裁剪块大小（像素）, 默认30
+        out_tif_name (str): 输出文件名前缀, 默认'img'
+        fill_value (int/float): 边缘填充值, 默认0
     
     返回:
         None
@@ -633,6 +635,235 @@ def clip_by_multishp(out_dir, sr_img, point_shp_dir, block_size=30, out_tif_name
         out_dataset = clip_by_shp(out_dir, sr_img, point_shp, block_size, out_tif_name=out_tif_name, fill_value=fill_value)
     else:
         raise RuntimeError(f'Invalid point_shp_dir: {point_shp_dir}, it should be a directory or a shapefile path')
+    
+
+def batch_raster_to_vector(tif_dir, shp_img_path, extension='.txt', dict=None, delete_value=0, if_smooth=False):
+    """
+    批量栅格转矢量, code by why
+    :param tif_dir: 输入的需要处理的栅格文件夹
+    :param shp_img_path: 输出的矢量路径
+    :param extension: 栅格后缀
+    :param dict: 类型字典, 如{1: "变质岩", 2: "沉积岩", ...}
+    :param delete_value: 需要删除的背景值, 默认为0
+    :param if_smooth: 是否平滑矢量
+    :return:
+    """
+    def smoothing(inShp, fname, bdistance=0.001):
+        """
+        :param inShp: 输入的矢量路径
+        :param fname: 输出的矢量路径
+        :param bdistance: 缓冲区距离
+        :return:
+        """
+        ogr.UseExceptions()
+        in_ds = ogr.Open(inShp)
+        in_lyr = in_ds.GetLayer()
+        # 创建输出Buffer文件
+        driver = ogr.GetDriverByName('ESRI Shapefile')
+        if os.path.exists(fname):
+            driver.DeleteDataSource(fname)
+        # 新建DataSource, Layer
+        out_ds = driver.CreateDataSource(fname)
+        out_lyr = out_ds.CreateLayer(fname, in_lyr.GetSpatialRef(), ogr.wkbPolygon)
+        def_feature = out_lyr.GetLayerDefn()
+        # 遍历原始的Shapefile文件给每个Geometry做Buffer操作
+        for feature in in_lyr:
+            geometry = feature.GetGeometryRef()
+            buffer = geometry.Buffer(bdistance).Buffer(-bdistance)
+            out_feature = ogr.Feature(def_feature)
+            out_feature.SetGeometry(buffer)
+            out_lyr.CreateFeature(out_feature)
+            out_feature = None
+        out_ds.FlushCache()
+        del in_ds, out_ds
+    def raster2poly(raster, outshp, geology_dict=dict):
+        """栅格转矢量
+        Args:
+            raster: 栅格文件名
+            outshp: 输出矢量文件名
+            geology_dict: 地质类型字典, 如{1: "变质岩", 2: "沉积岩", ...}
+        """
+        inraster = gdal.Open(raster)  # 读取路径中的栅格数据
+        inband = inraster.GetRasterBand(1)  # 这个波段就是最后想要转为矢量的波段
+        prj = osr.SpatialReference()
+        prj.ImportFromWkt(inraster.GetProjection())  # 读取栅格数据的投影信息
+
+        drv = ogr.GetDriverByName("ESRI Shapefile")
+        if os.path.exists(outshp):  # 若文件已经存在, 则删除它继续重新做一遍
+            drv.DeleteDataSource(outshp)
+        Polygon = drv.CreateDataSource(outshp)  # 创建一个目标文件
+        Poly_layer = Polygon.CreateLayer(
+            raster[:-4], srs=prj, geom_type=ogr.wkbMultiPolygon)
+
+        newField = ogr.FieldDefn('pValue', ogr.OFTReal)
+        Poly_layer.CreateField(newField)
+
+        if geology_dict is not None:
+            dzField = ogr.FieldDefn('dz', ogr.OFTString)
+            dzField.SetWidth(50)  # 设置字段宽度
+            Poly_layer.CreateField(dzField)
+
+        gdal.FPolygonize(inband, None, Poly_layer, 0)  # 核心函数, 执行栅格转矢量操作
+        if geology_dict is not None:
+            for feature in Poly_layer:
+                pvalue = feature.GetField('pValue')
+                if pvalue in geology_dict:
+                    feature.SetField('dz', geology_dict[pvalue])
+                    Poly_layer.SetFeature(feature)
+        
+        Polygon.SyncToDisk()
+        Polygon = None
+    if os.path.isdir(tif_dir):
+        listpic = search_files_in_directory(tif_dir, extension)
+    else:
+        listpic = [tif_dir]
+        tif_dir = os.path.dirname(tif_dir)
+    for img in tqdm(listpic):
+        tif_img_full_path = img
+        base_name = os.path.basename(img)
+        shp_full_path = shp_img_path + '/' + base_name[:-4] + '.shp'
+
+        raster2poly(tif_img_full_path, shp_full_path, dict)
+
+        ogr.RegisterAll()  # 注册所有的驱动
+
+        driver = ogr.GetDriverByName('ESRI Shapefile')
+        shp_dataset = ogr.Open(shp_full_path, 1)  # 0只读模式, 1读写模式
+        if shp_full_path is None:
+            print('Failed to open shp_1')
+
+        ly = shp_dataset.GetLayer()
+
+        '''删除矢量化结果中为背景的要素'''
+        feature = ly.GetNextFeature()
+        while feature is not None:
+            gridcode = feature.GetField('pValue')
+            if gridcode == delete_value:
+                delID = feature.GetFID()
+                ly.DeleteFeature(int(delID))
+            feature = ly.GetNextFeature()
+        ly.ResetReading()  # 重置
+        del shp_dataset
+        '''平滑矢量'''
+        if if_smooth:
+            smooth_shp_full_path = shp_img_path + '/' + 'smooth_' + base_name[:-4] + '.shp'
+            smoothing(shp_full_path, smooth_shp_full_path, bdistance=0.15)
+
+def random_split_point_shp(input_shp, output_shp1, output_shp2, num_to_select):
+    """
+    随机分割点Shapefile为两个新文件
+    
+    参数:
+    input_shp: 输入点Shapefile路径
+    output_shp1: 输出Shapefile1路径（包含随机选取的要素）
+    output_shp2: 输出Shapefile2路径（包含剩余的要素）
+    num_to_select: 要随机选取的要素数量
+    """
+    
+    # 确保输入文件存在
+    if not os.path.exists(input_shp):
+        raise FileNotFoundError(f"输入文件不存在: {input_shp}")
+    
+    # 打开输入数据源
+    driver = ogr.GetDriverByName('ESRI Shapefile')
+    in_ds = driver.Open(input_shp, 0)
+    if in_ds is None:
+        raise RuntimeError(f"无法打开输入文件: {input_shp}")
+    
+    in_layer = in_ds.GetLayer()
+    
+    # 获取要素总数
+    total_features = in_layer.GetFeatureCount()
+    if num_to_select > total_features:
+        raise ValueError(f"要选择的要素数量({num_to_select})大于总要素数({total_features})")
+    
+    # 生成随机索引列表
+    indices = list(range(total_features))
+    random.shuffle(indices)
+    selected_indices = set(indices[:num_to_select])
+    
+    # 获取输入图层的空间参考和字段定义
+    spatial_ref = in_layer.GetSpatialRef()
+    layer_defn = in_layer.GetLayerDefn()
+    
+    # 创建输出数据源1（选中的要素）
+    if os.path.exists(output_shp1):
+        driver.DeleteDataSource(output_shp1)
+    out_ds1 = driver.CreateDataSource(output_shp1)
+    out_layer1 = out_ds1.CreateLayer(os.path.basename(output_shp1)[:-4], 
+                                    spatial_ref, 
+                                    ogr.wkbPoint)
+    
+    # 复制字段定义
+    for i in range(layer_defn.GetFieldCount()):
+        field_defn = layer_defn.GetFieldDefn(i)
+        out_layer1.CreateField(field_defn)
+    
+    # 创建输出数据源2（剩余的要素）
+    if os.path.exists(output_shp2):
+        driver.DeleteDataSource(output_shp2)
+    out_ds2 = driver.CreateDataSource(output_shp2)
+    out_layer2 = out_ds2.CreateLayer(os.path.basename(output_shp2)[:-4], 
+                                    spatial_ref, 
+                                    ogr.wkbPoint)
+    
+    # 复制字段定义
+    for i in range(layer_defn.GetFieldCount()):
+        field_defn = layer_defn.GetFieldDefn(i)
+        out_layer2.CreateField(field_defn)
+    
+    # 重置图层读取位置
+    in_layer.ResetReading()
+    
+    # 遍历所有要素并根据索引分配到不同的输出文件
+    for idx, in_feature in enumerate(in_layer):
+        if idx in selected_indices:
+            out_layer1.CreateFeature(in_feature.Clone())
+        else:
+            out_layer2.CreateFeature(in_feature.Clone())
+    
+    # 清理资源
+    in_ds = None
+    out_ds1 = None
+    out_ds2 = None
+    
+    print(f"处理完成!")
+    print(f"已随机选择 {num_to_select} 个要素保存到: {output_shp1}")
+    print(f"剩余 {total_features - num_to_select} 个要素保存到: {output_shp2}")
+def batch_random_split_point_shp(input_shp_dir, output_dir, num_to_select):
+    """
+    批量随机分割点Shapefile为两个新文件
+    
+    参数:
+    input_shp_dir: 输入点Shapefile目录路径
+    output_dir: 输出目录路径，包含分割后的Shapefiles
+    num_to_select: 要随机选取的要素数量
+    """
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    
+    if os.path.isdir(input_shp_dir):
+        shp_files = search_files_in_directory(input_shp_dir, extension='.shp')
+        output_dir1 = os.path.join(output_dir, "split_part1")
+        output_dir2 = os.path.join(output_dir, "split_part2")
+        if not os.path.exists(output_dir1):
+            os.makedirs(output_dir1)
+            os.makedirs(output_dir2)
+        if not shp_files:
+            raise RuntimeError(f'Not shapefiles found in directory: {input_shp_dir}')
+        for shp_file in shp_files:
+            base_name = os.path.basename(shp_file)[:-4]
+            output_shp1 = os.path.join(output_dir1, f"{base_name}_part1.shp")
+            output_shp2 = os.path.join(output_dir2, f"{base_name}_part2.shp")
+            random_split_point_shp(shp_file, output_shp1, output_shp2, num_to_select)
+    elif os.path.isfile(input_shp_dir):
+        base_name = os.path.basename(input_shp_dir)[:-4]
+        output_shp1 = os.path.join(output_dir, f"{base_name}_part1.shp")
+        output_shp2 = os.path.join(output_dir, f"{base_name}_part2.shp")
+        random_split_point_shp(input_shp_dir, output_shp1, output_shp2, num_to_select)
+    else:
+        raise RuntimeError(f'Invalid input_shp_dir: {input_shp_dir}, it should be a directory or a shapefile path')
+
 if __name__ == '__main__':
     # point_value_merge(r'D:\Data\Hgy\龚鑫涛试验数据\program_data\cluster\research1_gmm24_optimization2 - 副本.shp', [13,23])
 

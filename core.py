@@ -35,7 +35,7 @@ class Hyperspectral_Image:
     def __del__(self):
         self.dataset = None # 释放内存
 
-    def init(self, filepath, init_fig=True):
+    def init(self, filepath, init_fig=True, rgb=(1,2,3)):
         try:
             dataset = gdal.Open(filepath)
             bands = dataset.RasterCount
@@ -43,7 +43,7 @@ class Hyperspectral_Image:
             self.dataset, self.rows, self.cols, self.bands = dataset, rows, cols, bands
             # self.data = self.get_dataset()
             if init_fig: # 根据需要加载影像数据
-                self.init_fig_data()
+                self.init_fig_data(rgb=rgb)
             return 0 # 代表数据导入成功
         except (AttributeError,RuntimeError):
             return 1
@@ -59,11 +59,12 @@ class Hyperspectral_Image:
     def create_mask_from_mutivector(self, inputdir):
         return mutivetor_to_mask(inputdir, self.dataset.GetGeoTransform(), self.rows, self.cols)
 
-    def init_fig_data(self):
+    def init_fig_data(self, rgb = (1,2,3)):
         band = self.dataset.GetRasterBand(1)
         self.no_data = band.GetNoDataValue()
         self.backward_mask = self.ignore_backward()  # 初始化有效像元位置
-        self.compose_rgb(r=1, g=2, b=3)
+        r,g,b = rgb
+        self.compose_rgb(r=r, g=g, b=b)
 
     def update(self,r,g,b,show_enhance_img=False):
         if show_enhance_img:
@@ -73,9 +74,12 @@ class Hyperspectral_Image:
 
     def compose_rgb(self, r, g, b, stretch=True):
         # 合成彩色图像
-        r_band = self.get_band_data(r)
-        g_band = self.get_band_data(g)
-        b_band = self.get_band_data(b)
+        try:
+            r_band = self.get_band_data(r)
+            g_band = self.get_band_data(g)
+            b_band = self.get_band_data(b)
+        except:
+            print("波段序号最小为1！")
         try:# 拉伸出错可能是mask全为False，忽略
             if stretch:
                 r_band = linear_2_percent_stretch(r_band, self.backward_mask)
@@ -86,7 +90,7 @@ class Hyperspectral_Image:
             r_band = r_band[self.backward_mask]
             g_band = g_band[self.backward_mask]
             b_band = b_band[self.backward_mask]
-        rgb = np.dstack([b_band, g_band, r_band]).squeeze().astype(np.float32)
+        rgb = np.dstack([r_band, g_band, b_band]).squeeze().astype(np.float32)
         self.ori_img = np.zeros((self.rows, self.cols, 3)) + 1
         self.ori_img[self.backward_mask] = rgb
         return self.ori_img

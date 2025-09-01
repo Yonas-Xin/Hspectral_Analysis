@@ -248,7 +248,7 @@ def print_result_report(frame, model, ck_pth, eval_dataloader, log_writer):
         kappa = cohen_kappa_score(all_labels, all_preds)
 
         log_writer.write(f"\n\nTest_acc: {accuracy:.4f}\n")
-        log_writer.write(f"Cohen's Kappa: {kappa:.4f}")
+        log_writer.write(f"Cohen's Kappa: {kappa:.4f}\n")
         log_writer.write(f"Classification Report:\n")
         log_writer.write(clf_report + "\n\n")
         log_writer.write("Confusion Matrix:\n")
