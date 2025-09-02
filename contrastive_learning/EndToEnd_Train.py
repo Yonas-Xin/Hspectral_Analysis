@@ -14,9 +14,8 @@ import math
 from multiprocessing import cpu_count
 
 if __name__ == '__main__':
-    clean_noise_samples = False # 是否掩膜噪声负样本
+    # clean_noise_samples = False # 是否掩膜噪声负样本
     if_full_cpu = True # 是否全负荷cpu
-    load_from_ck = False # 从断点处开始训练
     epochs = 30  # epoch
     batch = 8  # batch
     init_lr = 1e-4  # lr
@@ -59,6 +58,6 @@ if __name__ == '__main__':
           scheduler=scheduler,
           dataloader=dataloader,
           ck_pth=ck_pth, 
-          clean_noise_samples=clean_noise_samples, 
-          clean_th=0.99, 
-          load_from_ck=load_from_ck)
+        #   clean_noise_samples=clean_noise_samples, 
+        #   clean_th=0.99,
+        )

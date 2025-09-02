@@ -84,27 +84,26 @@ def clean_up(frame):
     else: pass
 
 
-def load_parameter(frame, model, optimizer, scheduler=None, ck_pth=None, load_from_ck=False): # 加载模型、优化器、调度器
+def load_parameter(frame, model, optimizer, scheduler=None, ck_pth=None): # 加载模型、优化器、调度器
     frame.full_cpu() # 打印配置信息
     if ck_pth is not None:
-        if load_from_ck:
-            checkpoint = torch.load(ck_pth, weights_only=True, map_location=frame.device)  # 加载断点
-            model.load_state_dict(checkpoint['model'])
-            frame.train_epoch_min_loss = checkpoint.get('best_loss', 100)
+        checkpoint = torch.load(ck_pth, weights_only=True, map_location=frame.device)  # 加载断点
+        model.load_state_dict(checkpoint['model'])
+        frame.train_epoch_min_loss = checkpoint.get('best_loss', 100)
+        try:
+            optimizer.load_state_dict(checkpoint['optimizer']) # 恢复优化器
+            print('The optimizer state have been loaded!')
+            frame.start_epoch = checkpoint.get('epoch', -1) + 1  # 获取epoch信息，如果没有，默认为0
+        except(ValueError, RuntimeError):
+            print('The optimizer is incompatible, and the parameters do not match')
+        if scheduler and 'scheduler' in checkpoint: # 恢复调度器
             try:
-                optimizer.load_state_dict(checkpoint['optimizer']) # 恢复优化器
-                print('The optimizer state have been loaded!')
-                frame.start_epoch = checkpoint.get('epoch', -1) + 1  # 获取epoch信息，如果没有，默认为0
-            except(ValueError, RuntimeError):
-                print('The optimizer is incompatible, and the parameters do not match')
-            if scheduler and 'scheduler' in checkpoint: # 恢复调度器
-                try:
-                    scheduler.load_state_dict(checkpoint['scheduler'])
-                except (ValueError, RuntimeError):
-                    print('The scheduler is incompatible')
-            print(f"Loaded checkpoint from epoch {frame.start_epoch}, current lr {optimizer.param_groups[0]['lr']}")
+                scheduler.load_state_dict(checkpoint['scheduler'])
+            except (ValueError, RuntimeError):
+                print('The scheduler is incompatible')
+        print(f"Loaded checkpoint from epoch {frame.start_epoch}, current lr {optimizer.param_groups[0]['lr']}")
 
-def train(frame, model, optimizer, dataloader, scheduler=None, ck_pth=None, clean_noise_samples=False, load_from_ck=False, clean_th=0.99):
+def train(frame, model, optimizer, dataloader, scheduler=None, ck_pth=None, clean_noise_samples=False, clean_th=0.99):
     def finish_work():
         try:
             result = f'Model saved at Epoch{model_save_epoch}. \nThe best top1-acc:{frame.epoch_max_acc}. \nThe best training_loss:{frame.train_epoch_min_loss}'
@@ -119,7 +118,7 @@ def train(frame, model, optimizer, dataloader, scheduler=None, ck_pth=None, clea
         os.makedirs(frame.tensorboard_dir)
     tensor_writer = SummaryWriter(log_dir=frame.tensorboard_dir)
     model.to(frame.device)
-    load_parameter(frame=frame, model=model, optimizer=optimizer, scheduler=scheduler, ck_pth=ck_pth, load_from_ck=load_from_ck) # 初始化模型
+    load_parameter(frame=frame, model=model, optimizer=optimizer, scheduler=scheduler, ck_pth=ck_pth) # 初始化模型
     model.train() # 开启训练模式，自训练没有测试模式，所以这个可以在训练之前设置
     
     model_save_epoch = 0
@@ -132,7 +131,7 @@ def train(frame, model, optimizer, dataloader, scheduler=None, ck_pth=None, clea
     # start training
     try:
         for epoch in range(frame.start_epoch+1, frame.epochs+1):
-            print(f'Epoch {epoch}:')
+            print(f'\nEpoch {epoch}:')
             for i,block in tqdm(enumerate(dataloader), total=len(dataloader), desc="Train", leave=True):
                 block = block.to(frame.device) # batch,C,H,W
                 batchs = block.size(0)

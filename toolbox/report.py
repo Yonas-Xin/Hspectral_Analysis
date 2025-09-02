@@ -1,8 +1,13 @@
+"""
+根据保存的模型，对样本集进程评测，生成报告
+"""
+
+
 import sys, os
 base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(base_path)
 import torch
-from cnn_model.Models.Models import MODEL_DICT, DATASET_DICT
+from cnn_model.Models.Data import CNN_Dataset
 from utils import read_dataset_from_txt
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -42,20 +47,19 @@ def print_result_report(model, eval_dataloader, log_writer, device):
         print("Confusion Matrix:\n", conf_matrix)
 if __name__ == '__main__':
     model_name = "Shallow_1DCNN"
-    writer_name = '1DCNN.log'
-    saved_model_name = r'D:\Programing\pythonProject\Hspectral_Analysis\cnn_model\_results\models_pth\SSAR_202506261846.pth'
+    log_path = '1DCNN.log'
+    model_pth = r'D:\Programing\pythonProject\Hspectral_Analysis\cnn_model\_results\models_pth\SSAR_202506261846.pth'
     batch = 36 # batch
     test_images_dir = r'D:\Data\Hgy\龚鑫涛试验数据\program_data\handle_class\clip_test_dataset_1x1\.datasets.txt'  # 测试数据集
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # 显卡设置
     out_classes = 15 # 分类数
 
 
-    out_embeddings = 24 # 模型初始化必要，后面打算把这个参数设置为固定值
+    out_embeddings = 128 # 模型初始化必要，后面打算把这个参数设置为固定值
     # 配置训练数据集和模型
     test_image_lists = read_dataset_from_txt(test_images_dir)
-    eval_dataset = DATASET_DICT[model_name](test_image_lists)
-    model = MODEL_DICT[model_name](out_embedding=out_embeddings, out_classes=out_classes, in_shape=eval_dataset.data_shape)  # 模型实例化
-    model.load_state_dict(torch.load(saved_model_name, weights_only=True, map_location=device)['model'])
+    eval_dataset = CNN_Dataset(test_image_lists)
+    model = torch.load(model_pth, weights_only=False, map_location=device)
     eval_dataloader = DataLoader(eval_dataset, batch_size=batch, shuffle=False, pin_memory=True, num_workers=0)  # 数据迭代器
-    log_writer = open(writer_name, 'w')
+    log_writer = open(log_path, 'w')
     print_result_report(model=model, eval_dataloader=eval_dataloader, log_writer=log_writer, device=device)

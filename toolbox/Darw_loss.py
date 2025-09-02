@@ -1,3 +1,7 @@
+"""
+根据log文件绘制训练过程中的准确率曲线
+"""
+
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.ticker import MaxNLocator

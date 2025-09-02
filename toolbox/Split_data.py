@@ -1,3 +1,7 @@
+"""
+将数据集层次划分为训练集与验证集
+"""
+
 import sys, os
 base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(base_path)
@@ -55,5 +59,5 @@ if __name__ == '__main__':
     base_dir = os.path.dirname(dataset_path)
 
     train_data_lists, eval_data_lists = split_dataset_to_train_and_eval(datasets, 0.2)
-    write_list_to_txt(train_data_lists, os.path.join(base_dir, 'Atrain_datasets.txt'))
-    write_list_to_txt(eval_data_lists, os.path.join(base_dir, 'Aeval_datasets.txt'))
+    write_list_to_txt(train_data_lists, os.path.join(base_dir, 'train_datasets.txt'))
+    write_list_to_txt(eval_data_lists, os.path.join(base_dir, 'eval_datasets.txt'))

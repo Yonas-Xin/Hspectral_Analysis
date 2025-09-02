@@ -15,7 +15,6 @@ from multiprocessing import cpu_count
 
 if __name__ == '__main__':
     if_full_cpu = True # 是否全负荷cpu
-    load_from_ck = False # 从断点处开始训练
     epochs = 30  # epoch
     batch = 8  # batch
     init_lr = 1e-4  # lr
@@ -58,5 +57,4 @@ if __name__ == '__main__':
           optimizer=optimizer,
           scheduler=scheduler,
           dataloader=dataloader,
-          ck_pth=ck_pth, 
-          load_from_ck=load_from_ck)
+          ck_pth=ck_pth,)

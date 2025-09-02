@@ -96,7 +96,6 @@ if __name__ == '__main__':
         os.makedirs(output_dir)
     img = Hyperspectral_Image()
     img.init(input_data, rgb=rgb_combine)
-    plt.imshow(img.ori_img)
     predict_whole_map = np.empty((img.rows,img.cols), dtype=np.int16) - 1 # 背景值为-1
     model = torch.load(model_pth, weights_only=False, map_location=device)
     model.to(device)

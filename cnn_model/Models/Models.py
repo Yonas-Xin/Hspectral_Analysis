@@ -4,7 +4,6 @@ from cnn_model.Models.Decoder import *
 import torch.nn as nn
 import torch.nn.functional as F
 import torch
-from cnn_model.Models.Data import Dataset_3D, Dataset_1D
 
 class My_Model(nn.Module):
     def __init__(self, out_classes=None, out_embedding=None, in_shape=None): # 框架需要三个输入
@@ -38,7 +37,7 @@ class My_Model(nn.Module):
                 print(f"Skipped loading these keys due to size mismatch: {skipped}")
 
 class Res_3D_18Net(My_Model):
-    def __init__(self, out_classes, out_embedding=1024, in_shape=None):
+    def __init__(self, out_classes, out_embedding=128, in_shape=None):
         super().__init__()
         self.encoder = ResNet_3D(block=Basic_Residual_block, layers=[2,2,2,2], num_classes=out_embedding) # 3d卷积残差编码器
         self.decoder = deep_classfier(out_embedding, out_classes, mid_channels=1024)
@@ -52,7 +51,7 @@ class Res_3D_18Net(My_Model):
         return x
 
 class Res_3D_34Net(My_Model):
-    def __init__(self, out_classes, out_embedding=1024, in_shape=None):
+    def __init__(self, out_classes, out_embedding=128, in_shape=None):
         super().__init__()
         self.encoder = ResNet_3D(block=Basic_Residual_block, layers=[3,4,6,3], num_classes=out_embedding) # 3d卷积残差编码器
         self.decoder = deep_classfier(out_embedding, out_classes, mid_channels=1024)
@@ -66,7 +65,7 @@ class Res_3D_34Net(My_Model):
         return x
     
 class Res_3D_50Net(My_Model):
-    def __init__(self, out_classes, out_embedding=1024, in_shape=None):
+    def __init__(self, out_classes, out_embedding=128, in_shape=None):
         super().__init__()
         self.encoder = ResNet_3D(block=Bottleneck_Residual_block, layers=[3,4,6,3], num_classes=out_embedding) # 3d卷积残差编码器
         self.decoder = deep_classfier(out_embedding, out_classes, mid_channels=1024)
@@ -81,7 +80,7 @@ class Res_3D_50Net(My_Model):
     
 class Shallow_3DCNN(My_Model):
     '''浅层3D CNN模型'''
-    def __init__(self, out_classes, out_embedding=1024, in_shape=None):
+    def __init__(self, out_classes, out_embedding=128, in_shape=None):
         super().__init__()
         self.encoder = Shallow_3DCNN_Encoder(out_embedding=out_embedding) # 3d卷积残差编码器
         self.decoder = nn.Linear(128, out_features=out_classes)
@@ -97,7 +96,7 @@ class Shallow_3DCNN(My_Model):
 
 class Shallow_1DCNN(My_Model):
     '''浅层1D CNN模型'''
-    def __init__(self, out_classes, out_embedding=1024, in_shape=None):
+    def __init__(self, out_classes, out_embedding=128, in_shape=None):
         super().__init__()
         self.encoder = Shallow_1DCNN_Encoder(out_embedding=out_embedding)  # 1D CNN 编码器
         self.decoder = deep_classfier(128, out_classes, mid_channels=1024)
@@ -111,8 +110,8 @@ class Shallow_1DCNN(My_Model):
         x = self.decoder(x)
         return x
     
-class Constrastive_learning_Model(My_Model):
-    def __init__(self, out_classes, out_embedding=1024, in_shape=None):
+class SRACN(My_Model):
+    def __init__(self, out_classes, out_embedding=128, in_shape=None):
         super().__init__()
         if in_shape is None:
             raise ValueError("in_shape must be provided for the model.")
@@ -136,18 +135,10 @@ class Constrastive_learning_Model(My_Model):
         return x
 
 MODEL_DICT = {
-    'SRACN':Constrastive_learning_Model,
+    'SRACN':SRACN,
     'Shallow_1DCNN':Shallow_1DCNN,
     'Shallow_3DCNN':Shallow_3DCNN,
     "Res_3D_18Net": Res_3D_18Net,
     "Res_3D_34Net": Res_3D_34Net,
     "Res_3D_50Net": Res_3D_50Net
-}
-DATASET_DICT = {
-    'SRACN':Dataset_3D,
-    'Shallow_1DCNN':Dataset_1D,
-    'Shallow_3DCNN':Dataset_3D,
-    "Res_3D_18Net": Dataset_3D,
-    "Res_3D_34Net": Dataset_3D,
-    "Res_3D_50Net": Dataset_3D
 }

@@ -14,11 +14,10 @@ import traceback
 from torch.utils.data import DataLoader
 
 class Cnn_Model_Frame:
-    def __init__(self, model_name, min_lr=1e-7, epochs=300, device=None, if_full_cpu=True, gradually_unfreeze=True):
+    def __init__(self, model_name, min_lr=1e-7, epochs=300, device=None, if_full_cpu=True):
         self.loss_func = nn.CrossEntropyLoss()
         self.min_lr = min_lr
         self.epochs = epochs
-        self.GRAGUALLY_UNFRREZE = gradually_unfreeze
 
         if device is None:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -68,26 +67,25 @@ def clean_up(frame):
             print(f"Directory {frame.model_dir} has been removed.")
     else: pass
 
-def load_parameter(frame, model, optimizer, scheduler=None, ck_pth=None, load_from_ck=False): # 加载模型、优化器、调度器
+def load_parameter(frame, model, optimizer, scheduler=None, ck_pth=None): # 加载模型、优化器、调度器
     frame.full_cpu() # 打印配置信息
     if ck_pth is not None:
-        if load_from_ck:
-            checkpoint = torch.load(ck_pth, weights_only=True, map_location=frame.device)
-            model.load_state_dict(checkpoint['model'])
-            frame.test_epoch_min_loss = checkpoint.get('best_loss', 100)
-            frame.test_epoch_max_acc = checkpoint.get('best_acc', -1)
+        checkpoint = torch.load(ck_pth, weights_only=True, map_location=frame.device)
+        model.load_state_dict(checkpoint['model'])
+        frame.test_epoch_min_loss = checkpoint.get('best_loss', 100)
+        frame.test_epoch_max_acc = checkpoint.get('best_acc', -1)
+        try:
+            optimizer.load_state_dict(checkpoint['optimizer']) # 恢复优化器
+            print('The optimizer state have been loaded!')
+            frame.start_epoch = checkpoint.get('epoch', -1) + 1  # 获取epoch信息，如果没有，默认为0
+        except(ValueError, RuntimeError):
+            print('The optimizer is incompatible, and the parameters do not match')
+        if scheduler and 'scheduler' in checkpoint: # 恢复调度器
             try:
-                optimizer.load_state_dict(checkpoint['optimizer']) # 恢复优化器
-                print('The optimizer state have been loaded!')
-                frame.start_epoch = checkpoint.get('epoch', -1) + 1  # 获取epoch信息，如果没有，默认为0
-            except(ValueError, RuntimeError):
-                print('The optimizer is incompatible, and the parameters do not match')
-            if scheduler and 'scheduler' in checkpoint: # 恢复调度器
-                try:
-                    scheduler.load_state_dict(checkpoint['scheduler'])
-                except (ValueError, RuntimeError):
-                    print('The scheduler is incompatible')
-            print(f"Loaded checkpoint from epoch {frame.start_epoch}, current lr {optimizer.param_groups[0]['lr']}")
+                scheduler.load_state_dict(checkpoint['scheduler'])
+            except (ValueError, RuntimeError):
+                print('The scheduler is incompatible')
+        print(f"Loaded checkpoint from epoch {frame.start_epoch}, current lr {optimizer.param_groups[0]['lr']}")
 
 def save_model(frame, model, optimizer, scheduler, epoch=None, avg_loss=None, avg_acc=None, is_best = False):
     state = {
@@ -105,7 +103,7 @@ def save_model(frame, model, optimizer, scheduler, epoch=None, avg_loss=None, av
         torch.save(model, frame.model_best_path_pt) # 保存整个模型结构
         print(f"============The best checkpoint saved at epoch {epoch}============")
 
-def train(frame, model, optimizer, train_dataloader, eval_dataloader=None, scheduler=None, ck_pth=None, load_from_ck=False):
+def train(frame, model, optimizer, train_dataloader, eval_dataloader=None, scheduler=None, ck_pth=None):
     def finish_work():
         best_result = f'Model saved at Epoch{model_save_epoch}. \nThe best training_acc:{best_train_accuracy:.6f}%.\nThe best testing_acc:{best_test_accuracy:.6f}%'
         log_writer.write(best_result + '\n')
@@ -117,7 +115,7 @@ def train(frame, model, optimizer, train_dataloader, eval_dataloader=None, sched
         os.makedirs(frame.tensorboard_dir)
     tensor_writer = SummaryWriter(log_dir=frame.tensorboard_dir)
     model.to(frame.device)
-    load_parameter(frame=frame, model=model, optimizer=optimizer, scheduler=scheduler, ck_pth=ck_pth, load_from_ck=load_from_ck) # 初始化模型
+    load_parameter(frame=frame, model=model, optimizer=optimizer, scheduler=scheduler, ck_pth=ck_pth) # 初始化模型
 
     best_train_accuracy = 0
     best_test_accuracy = 0
@@ -131,14 +129,8 @@ def train(frame, model, optimizer, train_dataloader, eval_dataloader=None, sched
                                     prefix="Batch")
     try:
         for epoch in range(frame.start_epoch+1, frame.epochs+1):
-            print(f'Epoch {epoch}:')
+            print(f'\nEpoch {epoch}:')
             model.train()  # 开启训练模式，自训练没有测试模式，所以这个可以在训练之前设置
-            if frame.GRAGUALLY_UNFRREZE: # 添加逐级解冻策略
-                try:
-                    model.gradually_unfreeze_encoder_modules(epoch)
-                except Exception as e:
-                    print(f'The parameter unfreezing was unsuccessful:{e}')
-                    pass
             for data, label in tqdm(train_dataloader, total=len(train_dataloader), desc="Training:", leave=True):
                 batchs = data.size(0)
                 data, label = data.to(frame.device), label.to(frame.device)
