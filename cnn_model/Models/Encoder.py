@@ -124,9 +124,12 @@ class Shallow_1DCNN_Encoder(nn.Module):
         super().__init__()
         self.conv1 = Common_1d(1, 64, kernel_size=7, padding=3, stride=1)
         self.pool1 = nn.MaxPool1d(kernel_size=2, stride=2)
-        self.conv2 = Common_1d(64, 128, kernel_size=3, padding=1)
-        self.conv3 = Common_1d(128, 256, kernel_size=3, padding=1)
-        self.conv4 = Common_1d(256, 512, kernel_size=3, padding=1)
+        self.conv2_1 = Common_1d(64, 128, kernel_size=3, padding=1)
+        self.conv2_2 = Common_1d(128, 128, kernel_size=3, padding=1)
+        self.conv3_1 = Common_1d(128, 256, kernel_size=3, padding=1)
+        self.conv3_2 = Common_1d(256, 256, kernel_size=3, padding=1)
+        self.conv4_1 = Common_1d(256, 512, kernel_size=3, padding=1)
+        self.conv4_2 = Common_1d(512, 512, kernel_size=3, padding=1)
         self.pool3 = nn.AdaptiveAvgPool1d((1))
 
         self.fc = nn.Linear(512, out_embedding)
@@ -134,8 +137,9 @@ class Shallow_1DCNN_Encoder(nn.Module):
     def forward(self, x):
         # 输入尺寸 [B, 1, L]
         x = self.pool1(self.conv1(x))
-        x = self.conv2(x)
-        x = self.conv4(self.conv3(x))
+        x = self.conv2_2(self.conv2_1(x))
+        x = self.conv3_2(self.conv3_1(x))
+        x = self.conv4_2(self.conv4_1(x))
         x = self.pool3(x)         # [B, 128, 1]
         x = x.view(x.size(0), -1) # [B, 128]
         return self.fc(x)

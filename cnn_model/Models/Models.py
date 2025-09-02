@@ -103,7 +103,18 @@ class Shallow_1DCNN(My_Model):
 
     def forward(self, x):
         if x.dim() == 2:
-            x = x.unsqueeze(1)  # 增加一个维度到 [B, 1, C, H, W]
+            x = x.unsqueeze(1)  # 增加一个维度到 [B, 1, bands]
+        elif x.dim() == 4: # [B, c, h, w]
+            _, _, h, w = x.shape
+            left_top = h // 2 - 1 if h % 2 == 0 else h // 2
+            x = x[:, :, left_top, left_top]
+            x = x.unsqueeze(1)
+        elif x.dim() == 5: # [B, 1, c, h, w]
+            x = x.squeeze(1)
+            _, _, h, w = x.shape
+            left_top = h // 2 - 1 if h % 2 == 0 else h // 2
+            x = x[:, :, left_top, left_top]
+            x = x.unsqueeze(1)
         elif x.dim() != 3:
             raise ValueError(f"Expected input dimension 2 or 3, but got {x.dim()}")
         x = self.encoder(x)
