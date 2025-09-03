@@ -757,7 +757,7 @@ def random_split_point_shp(input_shp, output_shp1, output_shp2, num_to_select):
     input_shp: 输入点Shapefile路径
     output_shp1: 输出Shapefile1路径（包含随机选取的要素）
     output_shp2: 输出Shapefile2路径（包含剩余的要素）
-    num_to_select: 要随机选取的要素数量
+    num_to_select: 要随机选取的要素数量, 如果小于1将按照比例选取
     """
     
     # 确保输入文件存在
@@ -776,7 +776,8 @@ def random_split_point_shp(input_shp, output_shp1, output_shp2, num_to_select):
     total_features = in_layer.GetFeatureCount()
     if num_to_select > total_features:
         raise ValueError(f"要选择的要素数量({num_to_select})大于总要素数({total_features})")
-    
+    if num_to_select < 1:
+        num_to_select = int(total_features * num_to_select) # 按比例选取
     # 生成随机索引列表
     indices = list(range(total_features))
     random.shuffle(indices)
