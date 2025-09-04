@@ -253,6 +253,50 @@ class SSRN(My_Model):
         x = self.fc(x.squeeze())
         
         return x
+    
+class HybridSN(nn.Module):
+  """code from: https://github.com/gokriznastic/HybridSN
+  自适应输入维度"""
+  def __init__(self, out_classes, out_embedding=None, in_shape=None):
+    super(HybridSN, self).__init__()
+    bands, h, w = in_shape
+    self.conv1 = nn.Conv3d(1, 8, (7, 3, 3))
+    self.conv2 = nn.Conv3d(8, 16, (5, 3, 3))
+    self.conv3 = nn.Conv3d(16, 32, (3, 3, 3))
+    bands = bands - 12
+    self.conv3_2d = nn.Conv2d(bands * 32, 64, (3,3))
+    h = h - 8
+    # 全连接层（256个节点）
+    self.dense1 =  nn.Linear(h*h*64,256)
+    # 全连接层（128个节点）
+    self.dense2 =  nn.Linear(256,128)
+    # 最终输出层(16个节点)
+    self.out = nn.Linear(128, out_classes)
+    #  Dropout（0.4)
+    self.drop = nn.Dropout(p=0.4)
+    # 激活函数ReLU
+    self.relu = nn.ReLU()
+  def forward(self, x):
+    if x.dim() == 4:
+        x = x.unsqueeze(1)  # 增加一个维度到 [B, 1, C, H, W]
+    elif x.dim() != 5:
+        raise ValueError(f"Expected input dimension 4 or 5, but got {x.dim()}")
+    out = self.relu(self.conv1(x))
+    out = self.relu(self.conv2(out))
+    out = self.relu(self.conv3(out))
+    # 进行二维卷积，因此把前面的 32*18 reshape 一下，得到 （576, 19, 19）
+    out = out.view(-1, out.shape[1] * out.shape[2], out.shape[3], out.shape[4])
+    out = self.relu(self.conv3_2d(out))
+    # flatten 操作，变为 18496 维的向量，
+    out = out.view(out.size(0), -1)
+    out = self.dense1(out)
+    out = self.drop(out)
+    out = self.dense2(out)
+    out = self.drop(out)
+    out = self.out(out)
+    # out = self.soft(out)
+    return out
+  
 MODEL_DICT = {
     'SRACN':SRACN,
     'Shallow_1DCNN':Shallow_1DCNN,
