@@ -140,6 +140,31 @@ class Common_1DCNN_Encoder(nn.Module):
         x = self.pool3(x)         # [B, 128, 1]
         x = x.view(x.size(0), -1) # [B, 128]
         return self.fc(x)
+    
+class Common_2DCNN_Encoder(nn.Module):
+    def __init__(self, out_embedding=128, in_shape=None):
+        super().__init__()
+        bands, _, _ = in_shape
+        self.conv1 = Common_2d(bands, 64, kernel_size=7, padding=3, stride=1)
+        # self.pool1 = nn.MaxPool1d(kernel_size=2, stride=2)
+        self.conv2_1 = Common_2d(64, 128, kernel_size=3, padding=1)
+        self.conv2_2 = Common_2d(128, 128, kernel_size=3, padding=1)
+        self.conv3_1 = Common_2d(128, 256, kernel_size=3, padding=1)
+        self.conv3_2 = Common_2d(256, 256, kernel_size=3, padding=1)
+        self.conv4_1 = Common_2d(256, 512, kernel_size=3, padding=1)
+        self.conv4_2 = Common_2d(512, 512, kernel_size=3, padding=1)
+        self.pool3 = nn.AdaptiveAvgPool2d((1, 1))
+
+        self.fc = nn.Linear(512, out_embedding)
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.conv2_2(self.conv2_1(x))
+        x = self.conv3_2(self.conv3_1(x))
+        x = self.conv4_2(self.conv4_1(x))
+        x = self.pool3(x)         # [B, 128, 1]
+        x = x.view(x.size(0), -1) # [B, 128]
+        return self.fc(x)
 
 # =================================================================================================
 # 编码器组件
@@ -279,6 +304,18 @@ class Common_1d(nn.Module):
         '''先batch，后激活'''
         self.conv = nn.Conv1d(in_channels, out_channels, kernel_size=kernel_size, padding=padding, stride=stride)
         self.batch_norm = nn.BatchNorm1d(out_channels)
+        self.relu = nn.ReLU(inplace=True)
+
+    def forward(self, x):
+        return self.relu(self.batch_norm(self.conv(x)))
+
+# ============2D CNN组件============
+class Common_2d(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size=3, padding=1, stride=1):
+        super().__init__()
+        '''先batch，后激活'''
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, padding=padding, stride=stride)
+        self.batch_norm = nn.BatchNorm2d(out_channels)
         self.relu = nn.ReLU(inplace=True)
 
     def forward(self, x):

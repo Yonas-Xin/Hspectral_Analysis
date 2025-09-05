@@ -120,6 +120,22 @@ class Common_1DCNN(My_Model):
         x = self.encoder(x)
         x = self.decoder(x)
         return x
+
+class Common_2DCNN(My_Model):
+    '''浅层1D CNN模型'''
+    def __init__(self, out_classes, out_embedding=128, in_shape=None):
+        super().__init__()
+        self.encoder = Common_2DCNN_Encoder(out_embedding=out_embedding, in_shape=in_shape)  # 1D CNN 编码器
+        self.decoder = deep_classfier(128, out_classes, mid_channels=1024)
+
+    def forward(self, x):
+        if x.dim() == 5: # [B, c, h, w]
+            x = x.squeeze(1)
+        elif x.dim() != 4:
+            raise ValueError(f"Expected input dimension 4 or 5, but got {x.dim()}")
+        x = self.encoder(x)
+        x = self.decoder(x)
+        return x
     
 class SRACN(My_Model):
     def __init__(self, out_classes, out_embedding=128, in_shape=None):
@@ -155,8 +171,10 @@ class SSRN(My_Model):
         self.decoder = nn.Linear(128, out_classes)
 
     def forward(self, x):
-        if x.dim() == 5:
-            raise ValueError(f"Expected input dimension 4, but got {x.dim()}")
+        if x.dim() == 5: # [B, c, h, w]
+            x = x.squeeze(1)
+        elif x.dim() != 4:
+            raise ValueError(f"Expected input dimension 4 or 5, but got {x.dim()}")
         x = self.encoder(x)
         x = self.decoder(x)
         return x
@@ -201,6 +219,10 @@ class Vgg16_net(My_Model):
         )
 
     def forward(self,x):
+        if x.dim() == 5: # [B, c, h, w]
+            x = x.squeeze(1)
+        elif x.dim() != 4:
+            raise ValueError(f"Expected input dimension 4 or 5, but got {x.dim()}")
         x=self.encoder(x)
         x=self.decoder(x)
         return x
@@ -213,7 +235,11 @@ class MobileNetV1(My_Model):
         self.encoder=MobileNetV1_encoder(out_embedding=out_embedding, in_shape=in_shape)
         self.decoder = nn.Linear(out_embedding, out_classes)
     
-    def forward(self,x):        
+    def forward(self,x):
+        if x.dim() == 5: # [B, c, h, w]
+            x = x.squeeze(1)
+        elif x.dim() != 4:
+            raise ValueError(f"Expected input dimension 4 or 5, but got {x.dim()}")        
         x=self.encoder(x)
         x=self.decoder(x)
         return x
@@ -226,7 +252,11 @@ class MobileNetV2(My_Model):
         self.encoder=MobileNetV2_encoder(out_embedding=out_embedding, in_shape=in_shape)
         self.decoder = nn.Linear(out_embedding, out_classes)
     
-    def forward(self,x):        
+    def forward(self,x):
+        if x.dim() == 5: # [B, c, h, w]z
+            x = x.squeeze(1)
+        elif x.dim() != 4:
+            raise ValueError(f"Expected input dimension 4 or 5, but got {x.dim()}")    
         x=self.encoder(x)
         x=self.decoder(x)
         return x
