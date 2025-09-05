@@ -5,7 +5,7 @@ from contrastive_learning.Models.Decoder import *
 class Spe_Spa_Attenres(nn.Module):
     def __init__(self, out_embedding=1024, in_shape=None):
         super().__init__()
-        self.encoder = Spe_Spa_Attenres_Encoder(out_embedding=out_embedding, in_shape=in_shape)
+        self.encoder = SRACN_Encoder(out_embedding=out_embedding, in_shape=in_shape)
         self.decoder = Spe_Spa_Atten_Decoder(out_embedding, 128, mid_channels=128)
     def forward(self, x):
         if x.dim() == 4:

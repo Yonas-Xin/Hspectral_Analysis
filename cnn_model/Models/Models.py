@@ -126,7 +126,7 @@ class SRACN(My_Model):
         super().__init__()
         if in_shape is None:
             raise ValueError("in_shape must be provided for the model.")
-        self.encoder = Spe_Spa_Attenres_Encoder(in_shape=in_shape, out_embedding=out_embedding)
+        self.encoder = SRACN_Encoder(in_shape=in_shape, out_embedding=out_embedding)
         self.decoder = deep_classfier(out_embedding, out_classes, mid_channels=1024)
 
     def _freeze_encoder(self):
@@ -148,7 +148,7 @@ class SRACN(My_Model):
 
 # ==============================其他论文中的模型==============================
 class SSRN(My_Model):
-    """code form: https://github.com/zilongzhong/SSRN"""
+    """code from: https://github.com/zilongzhong/SSRN"""
     def __init__(self, out_classes, out_embedding=None, in_shape=None):
         super(SSRN, self).__init__()
         self.encoder = SSRN_encoder(in_shape=in_shape)
@@ -161,7 +161,7 @@ class SSRN(My_Model):
         x = self.decoder(x)
         return x
     
-class HybridSN(nn.Module):
+class HybridSN(My_Model):
     """code from: https://github.com/gokriznastic/HybridSN
     自适应输入维度"""
     def __init__(self, out_classes, out_embedding=None, in_shape=None):
@@ -182,7 +182,7 @@ class HybridSN(nn.Module):
         x = self.decoder(x)
         return x
 
-class Vgg16_net(nn.Module):
+class Vgg16_net(My_Model):
     """code from: https://github.com/Lornatang/VGG-PyTorch
     为了适应小patch数据, 做了点pool的小修改"""
     def __init__(self, out_classes, out_embedding=None, in_shape=None):
@@ -204,7 +204,32 @@ class Vgg16_net(nn.Module):
         x=self.encoder(x)
         x=self.decoder(x)
         return x
+
+class MobileNetV1(My_Model):
+    """code from: https://developer.aliyun.com/article/1309561
+    论文地址: https://arxiv.org/abs/1704.04861"""
+    def __init__(self, out_classes, out_embedding=128, in_shape=None):
+        super().__init__()
+        self.encoder=MobileNetV1_encoder(out_embedding=out_embedding, in_shape=in_shape)
+        self.decoder = nn.Linear(out_embedding, out_classes)
     
+    def forward(self,x):        
+        x=self.encoder(x)
+        x=self.decoder(x)
+        return x
+
+class MobileNetV2(My_Model):
+    """code from: https://blog.csdn.net/Code_and516/article/details/130200844
+    论文地址: https://arxiv.org/abs/1801.04381"""
+    def __init__(self, out_classes, out_embedding=128, in_shape=None):
+        super().__init__()
+        self.encoder=MobileNetV2_encoder(out_embedding=out_embedding, in_shape=in_shape)
+        self.decoder = nn.Linear(out_embedding, out_classes)
+    
+    def forward(self,x):        
+        x=self.encoder(x)
+        x=self.decoder(x)
+        return x
 MODEL_DICT = {
     'SRACN':SRACN,
     'Shallow_1DCNN':Common_1DCNN,
