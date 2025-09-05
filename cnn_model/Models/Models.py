@@ -260,6 +260,21 @@ class MobileNetV2(My_Model):
         x=self.encoder(x)
         x=self.decoder(x)
         return x
+
+class ResNet18(My_Model):
+    def __init__(self, out_classes, out_embedding=128, in_shape=None):
+        super().__init__()
+        self.encoder = ResNet_2D(block=Basic_Residual_block_2d, layers=[2,2,2,2], out_embedding=out_embedding, in_shape=in_shape)
+        self.decoder = deep_classfier(out_embedding, out_classes, mid_channels=1024)
+    def forward(self, x):
+        if x.dim() == 5:
+            x = x.squeeze(1)
+        elif x.dim() != 4:
+            raise ValueError(f"Expected input dimension 4 or 5, but got {x.dim()}")
+        x = self.encoder(x)
+        x = self.decoder(x)
+        return x
+
 MODEL_DICT = {
     'SRACN':SRACN,
     'Shallow_1DCNN':Common_1DCNN,
