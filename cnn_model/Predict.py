@@ -76,22 +76,19 @@ def clean_up(output_dir):
         print(f'the temp_dir {output_dir} has been deleted!')
         os.rmdir(output_dir)
 
+output_path = 'SRACN_PRE.tif'
+out_classes = 11
+block_size = 17
+batch = 128
+input_data = r"C:\Users\85002\OneDrive - cugb.edu.cn\项目数据\张川铀资源\ZY_result\Image\research_area1.dat"
+model_pth = r'cnn_model\_results\SRACN_202509071837\SRACN_202509071837_best.pt'  # 模型路径
+rgb_combine = (29,19,9) # 绘制图像时的rgb组合，从1开始
 if __name__ == '__main__':
-    model_name = "SRACN"
-    out_classes = 8
-    block_size = 17
-    batch = 24
-    input_data = r"C:\Users\85002\OneDrive - cugb.edu.cn\项目数据\张川铀资源\ZY_result\Image\research_area1.dat"
-    model_pth = r'D:\Programing\pythonProject\Hspectral_Analysis\cnn_model\_results\SRACN-SRACN_spectral0.5_band0_Emd128_202508191328\SRACN-SRACN_spectral0.5_band0_Emd128_202508191328_best.pt'  # 模型路径
-    output_path = 'SRACN-spectral0.5_band0_noise0.5_s50_Emd128.tif'
-    rgb_combine = (29,19,9) # 绘制图像时的rgb组合，从1开始
-
-
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-    image_block_size = 16
+    image_block_size = 512
     left_top = int(block_size / 2 - 1) if block_size % 2 == 0 else int(block_size // 2)
     current_time = datetime.now().strftime("%Y%m%d%H%M")  # 记录系统时间
-    output_dir = f'.\\cnn_model\\temp_dir\\{current_time}'
+    output_dir = '.\\cnn_model\\temp_dir' # 临时文件夹，保存中间图片
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     img = Hyperspectral_Image()
@@ -125,7 +122,7 @@ if __name__ == '__main__':
 
                 # 下面保存预测过程中的图像
                 map = utils.label_to_rgb(predict_whole_map)
-                out_png = os.path.join(output_dir, f"figure-{output_path[:-4]}.png")
+                out_png = os.path.join(output_dir, f"{output_path[:-4]}-{current_time}.png")
                 create_img(img.ori_img, map, out_png)
     except KeyboardInterrupt as k:
         clean_up(output_dir)

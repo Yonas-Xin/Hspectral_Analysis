@@ -2,10 +2,107 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch
 import math
-class ResNet_3D(nn.Module):
-    def __init__(self, block, layers, num_classes=1024):
-        self.inplanes = 64
+
+class Res_3D_18Net_encoder(nn.Module):
+    def __init__(self, layers_nums=18, out_embedding=1024):
+        super().__init__()
+        self.net = ResNet_3D(layers_nums, out_embedding=out_embedding)
+        self.avgpool = nn.AdaptiveAvgPool3d((1,1,1))
+        self.fc = nn.Linear(512 * self.net.expansion, out_embedding)
+    
+    def forward(self, x):
+        x = self.net(x)
+        x = self.avgpool(x)
+        x = x.view(x.size(0), -1)
+        x = self.fc(x)
+        return x
+
+class Res_3D_34Net_encoder(nn.Module):
+    def __init__(self, layers_nums=34, out_embedding=1024):
+        super().__init__()
+        self.net = ResNet_3D(layers_nums, out_embedding=out_embedding)
+        self.avgpool = nn.AdaptiveAvgPool3d((1,1,1))
+        self.fc = nn.Linear(512 * self.net.expansion, out_embedding)
+    
+    def forward(self, x):
+        x = self.net(x)
+        x = self.avgpool(x)
+        x = x.view(x.size(0), -1)
+        x = self.fc(x)
+        return x
+
+class Res_3D_50Net_encoder(nn.Module):
+    def __init__(self, layers_nums=50, out_embedding=1024):
+        super().__init__()
+        self.net = ResNet_3D(layers_nums, out_embedding=out_embedding)
+        self.avgpool = nn.AdaptiveAvgPool3d((1,1,1))
+        self.fc = nn.Linear(512 * self.net.expansion, out_embedding)
+    
+    def forward(self, x):
+        x = self.net(x)
+        x = self.avgpool(x)
+        x = x.view(x.size(0), -1)
+        x = self.fc(x)
+        return x
+
+class ResNet18_encoder(nn.Module):
+    def __init__(self, layers_nums=18, out_embedding=1024, in_shape=None):
+        super().__init__()
+        self.net = ResNet_2D(layers_nums, out_embedding==out_embedding, in_shape=in_shape)
+        self.avgpool = nn.AdaptiveAvgPool2d(1)
+        self.fc = nn.Linear(512 * self.net.expansion, out_embedding)
+    
+    def forward(self, x):
+        x = self.net(x)
+        if x.shape[2] < 2 or x.shape[3] < 2:
+            pass
+        else:
+            x = self.avgpool(x)
+        x = x.view(x.size(0), -1)
+        x = self.fc(x)
+        return x
+
+class ResNet34_encoder(nn.Module):
+    def __init__(self, layers_nums=34, out_embedding=1024, in_shape=None):
+        super().__init__()
+        self.net = ResNet_2D(layers_nums, out_embedding=out_embedding, in_shape=in_shape)
+        self.avgpool = nn.AdaptiveAvgPool2d(1)
+        self.fc = nn.Linear(512 * self.net.expansion, out_embedding)
+    
+    def forward(self, x):
+        x = self.net(x)
+        if x.shape[2] < 2 or x.shape[3] < 2:
+            pass
+        else:
+            x = self.avgpool(x)
+        x = x.view(x.size(0), -1)
+        x = self.fc(x)
+        return x
+
+class ResNet50_encoder(nn.Module):
+    def __init__(self, layers_nums=50, out_embedding=1024, in_shape=None):
+        super().__init__()
+        self.net = ResNet_2D(layers_nums, out_embedding=out_embedding, in_shape=in_shape)
+        self.avgpool = nn.AdaptiveAvgPool2d(1)
+        self.fc = nn.Linear(512 * self.net.expansion, out_embedding)
+    
+    def forward(self, x):
+        x = self.net(x)
+        if x.shape[2] < 2 or x.shape[3] < 2:
+            pass
+        else:
+            x = self.avgpool(x)
+        x = x.view(x.size(0), -1)
+        x = self.fc(x)
+        return x
+    
+class ResNet_3D(nn.Module): # 不包含平均池化层与线性映射层
+    def __init__(self, layers_nums, out_embedding=1024):
         super(ResNet_3D, self).__init__()
+        block, layers = self._cal_layers(layers_nums)
+        self.expansion = block.expansion
+        self.inplanes = 64
+        
         # 网络输入部分
         self.conv1 = nn.Conv3d(1, 64, kernel_size=7, stride=(2,1,1), padding=3, bias=False)
         self.bn1 = nn.BatchNorm3d(64)
@@ -16,9 +113,9 @@ class ResNet_3D(nn.Module):
         self.layer2 = self._make_layer(block, 128, layers[1], stride=(2,1,1))
         self.layer3 = self._make_layer(block, 256, layers[2], stride=(2,1,1))
         self.layer4 = self._make_layer(block, 512, layers[3], stride=(2,1,1))
-        # 平均池化和全连接层
-        self.avgpool = nn.AdaptiveAvgPool3d((1,1,1))
-        self.fc = nn.Linear(512 * block.expansion, num_classes)
+        # 平均池化和全连接层 在其他地方实现
+        # self.avgpool = nn.AdaptiveAvgPool3d((1,1,1))
+        # self.fc = nn.Linear(512 * block.expansion, num_classes)
  
         for m in self.modules():
             if isinstance(m, nn.Conv3d):
@@ -27,6 +124,16 @@ class ResNet_3D(nn.Module):
             elif isinstance(m, nn.BatchNorm3d):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
+    
+    def _cal_layers(self, layer_nums):
+        if layer_nums == 18:
+            return Basic_Residual_block, [2,2,2,2]
+        elif layer_nums == 34:
+            return Basic_Residual_block, [3,4,6,3]
+        elif layer_nums == 50:
+            return Bottleneck_Residual_block, [3,4,6,3]
+        else:
+            raise ValueError(f"The number of layers must be 18 or 34 or 50, but get {layer_nums}")
  
     def _make_layer(self, block, planes, blocks, stride=1):
         downsample = None
@@ -56,16 +163,18 @@ class ResNet_3D(nn.Module):
         x = self.layer3(x)
         x = self.layer4(x)
  
-        x = self.avgpool(x)
-        x = x.view(x.size(0), -1)
-        x = self.fc(x)
+        # x = self.avgpool(x)
+        # x = x.view(x.size(0), -1)
+        # x = self.fc(x)
         return x
 
-class ResNet_2D(nn.Module):
-    def __init__(self, block, layers, out_embedding=128, in_shape=None):
+class ResNet_2D(nn.Module): # 不包含平均池化层与线性映射层
+    def __init__(self, layer_nums, out_embedding=128, in_shape=None):
+        super(ResNet_2D, self).__init__()
+        block, layers = self._cal_layers(layer_nums)
+        self.expansion = block.expansion
         bands, _, _ = in_shape
         self.inplanes = 64
-        super(ResNet_2D, self).__init__()
         # 网络输入部分
         self.conv1 = nn.Conv2d(bands, 64, kernel_size=7, stride=2, padding=3, bias=False)
         self.bn1 = nn.BatchNorm2d(64)
@@ -77,8 +186,8 @@ class ResNet_2D(nn.Module):
         self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
         self.layer4 = self._make_layer(block, 512, layers[3], stride=2)
         # 平均池化和全连接层
-        self.avgpool = nn.AdaptiveAvgPool2d((1,1,1))
-        self.fc = nn.Linear(512 * block.expansion, out_embedding)
+        # self.avgpool = nn.AdaptiveAvgPool2d((1,1,1))
+        # self.fc = nn.Linear(512 * block.expansion, out_embedding)
  
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -87,6 +196,16 @@ class ResNet_2D(nn.Module):
             elif isinstance(m, nn.BatchNorm2d):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
+
+    def _cal_layers(self, layer_nums):
+        if layer_nums == 18:
+            return Basic_Residual_block_2d, [2,2,2,2]
+        elif layer_nums == 34:
+            return Basic_Residual_block_2d, [3,4,6,3]
+        elif layer_nums == 50:
+            return Bottleneck_Residual_block_2d, [3,4,6,3]
+        else:
+            raise ValueError(f"The number of layers must be 18 or 34 or 50, but get {layer_nums}")
  
     def _make_layer(self, block, planes, blocks, stride=1):
         downsample = None
@@ -118,12 +237,12 @@ class ResNet_2D(nn.Module):
         x = self.layer3(x)
         x = self.layer4(x)
 
-        if x.shape[2] < 2 or x.shape[3] < 2:
-            pass
-        else:
-            x = self.avgpool(x)
-        x = x.view(x.size(0), -1)
-        x = self.fc(x)
+        # if x.shape[2] < 2 or x.shape[3] < 2:
+        #     pass
+        # else:
+        #     x = self.avgpool(x)
+        # x = x.view(x.size(0), -1)
+        # x = self.fc(x)
         return x
 
 class SRACN_Encoder(nn.Module): # 以前训练的时候这里的类名为: Spe_Spa_Attenres_Encoder
@@ -153,26 +272,18 @@ class SRACN_Encoder(nn.Module): # 以前训练的时候这里的类名为: Spe_S
         x = self.avg_pool(self.res_block6(x))
         x = x.view(x.shape[0], -1)
         return self.fc(x)
-    
-    @property # 返回解冻计划
-    def get_unfreeze_plan(self):
-        UNFREEZE_PLAN = {80:'res_block4',
-                         60:'res_block5',
-                         40:'res_block6',
-                         20:'linear'} # epoch为20时解冻线性层
-        return UNFREEZE_PLAN
 
 class Common_3DCNN_Encoder(nn.Module):
-    def __init__(self, out_embedding=1024):
+    def __init__(self, out_embedding=128):
         super().__init__()
-        self.conv1 = Common_3d(1, 64, kernel_size=7, padding=3, stride=(2,1,1))
+        self.conv1 = Common_3d(1, 64, kernel_size=3, padding=1, stride=(2,1,1))
         self.pool1 = nn.MaxPool3d(kernel_size=2, stride=2)
-        self.conv2 = Common_3d(64, 128, kernel_size=(3,3,3), padding=(1,1,1), stride=1)
-        self.conv3 = Common_3d(128, 256, kernel_size=(3,3,3), padding=(1,1,1), stride=1)
-        self.conv4 = Common_3d(256, 512, kernel_size=(3,3,3), padding=(1,1,1), stride=1)
+        self.conv2 = Common_3d(64, 128, kernel_size=(3,3,3), padding=(1,1,1), stride=(2,1,1))
+        self.conv3 = Common_3d(128, 256, kernel_size=(3,3,3), padding=(1,1,1), stride=(2,1,1))
+        self.conv4 = Common_3d(256, 512, kernel_size=(3,3,3), padding=(1,1,1), stride=(2,1,1))
         self.pool2 = nn.AdaptiveAvgPool3d((1,1,1))
-        self.fc = nn.Linear(512, out_features=out_embedding)
-    
+        self.fc = nn.Linear(64, out_features=out_embedding)
+     
     def forward(self, x):
         x = self.pool1(self.conv1(x))
         x = self.conv2(x)
@@ -184,14 +295,14 @@ class Common_3DCNN_Encoder(nn.Module):
 class Common_1DCNN_Encoder(nn.Module):
     def __init__(self, out_embedding=1024):
         super().__init__()
-        self.conv1 = Common_1d(1, 64, kernel_size=7, padding=3, stride=1)
-        # self.pool1 = nn.MaxPool1d(kernel_size=2, stride=2)
+        self.conv1 = Common_1d(1, 64, kernel_size=7, padding=3, stride=2)
+        self.pool1 = nn.MaxPool1d(kernel_size=2, stride=2)
         self.conv2_1 = Common_1d(64, 128, kernel_size=3, padding=1)
-        self.conv2_2 = Common_1d(128, 128, kernel_size=3, padding=1)
+        self.conv2_2 = Common_1d(128, 128, kernel_size=3, padding=1, stride=2)
         self.conv3_1 = Common_1d(128, 256, kernel_size=3, padding=1)
-        self.conv3_2 = Common_1d(256, 256, kernel_size=3, padding=1)
+        self.conv3_2 = Common_1d(256, 256, kernel_size=3, padding=1, stride=2)
         self.conv4_1 = Common_1d(256, 512, kernel_size=3, padding=1)
-        self.conv4_2 = Common_1d(512, 512, kernel_size=3, padding=1)
+        self.conv4_2 = Common_1d(512, 512, kernel_size=3, padding=1, stride=2)
         self.pool3 = nn.AdaptiveAvgPool1d((1))
 
         self.fc = nn.Linear(512, out_embedding)
@@ -199,6 +310,7 @@ class Common_1DCNN_Encoder(nn.Module):
     def forward(self, x):
         # 输入尺寸 [B, 1, L]
         x = self.conv1(x)
+        x = self.pool1(x)
         x = self.conv2_2(self.conv2_1(x))
         x = self.conv3_2(self.conv3_1(x))
         x = self.conv4_2(self.conv4_1(x))
@@ -210,25 +322,23 @@ class Common_2DCNN_Encoder(nn.Module):
     def __init__(self, out_embedding=128, in_shape=None):
         super().__init__()
         bands, _, _ = in_shape
-        self.conv1 = Common_2d(bands, 64, kernel_size=7, padding=3, stride=1)
-        # self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2)
-        self.conv2_1 = Common_2d(64, 128, kernel_size=3, padding=1)
-        self.conv2_2 = Common_2d(128, 128, kernel_size=3, padding=1)
-        self.conv3_1 = Common_2d(128, 256, kernel_size=3, padding=1)
-        self.conv3_2 = Common_2d(256, 256, kernel_size=3, padding=1)
-        self.conv4_1 = Common_2d(256, 512, kernel_size=3, padding=1)
-        self.conv4_2 = Common_2d(512, 512, kernel_size=3, padding=1)
+        self.conv1 = Common_2d(bands, 64, kernel_size=3, padding=1, stride=2)
+        self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.conv2 = Common_2d(64, 128, kernel_size=3, padding=1, stride=2)
+        self.conv3 = Common_2d(128, 256, kernel_size=3, padding=1)
+        self.conv4 = Common_2d(256, 512, kernel_size=3, padding=1)
         self.pool3 = nn.AdaptiveAvgPool2d((1, 1))
 
-        self.fc = nn.Linear(512, out_embedding)
+        self.fc = nn.Linear(64, out_embedding)
 
     def forward(self, x):
         x = self.conv1(x)
-        x = self.conv2_2(self.conv2_1(x))
-        x = self.conv3_2(self.conv3_1(x))
-        x = self.conv4_2(self.conv4_1(x))
-        x = self.pool3(x)         # [B, 128, 1]
-        x = x.view(x.size(0), -1) # [B, 128]
+        x = self.pool1(x)
+        x = self.conv2(x)
+        x = self.conv3(x)
+        x = self.conv4(x)
+        x = self.pool3(x)
+        x = x.view(x.size(0), -1)
         return self.fc(x)
 
 # =================================================================================================

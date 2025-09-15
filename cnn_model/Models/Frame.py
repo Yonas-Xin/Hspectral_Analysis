@@ -105,7 +105,8 @@ def save_model(frame, model, optimizer, scheduler, epoch=None, avg_loss=None, av
 
 def train(frame, model, optimizer, train_dataloader, eval_dataloader=None, scheduler=None, ck_pth=None):
     def finish_work():
-        best_result = f'Model saved at Epoch{model_save_epoch}. \nThe best training_acc:{best_train_accuracy:.6f}%.\nThe best testing_acc:{best_test_accuracy:.6f}%'
+        formatted_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        best_result = f'{formatted_time} Model saved at Epoch {model_save_epoch}. The best training_acc:{best_train_accuracy:.4f}%. The best testing_acc:{best_test_accuracy:.4f}%.'
         log_writer.write(best_result + '\n')
         print(best_result)
         if eval_dataloader is not None:
@@ -121,9 +122,9 @@ def train(frame, model, optimizer, train_dataloader, eval_dataloader=None, sched
     best_test_accuracy = 0
     model_save_epoch = 0
     train_loss_note = AverageMeter("Train-Loss", ":.6f")
-    train_acc_note = AverageMeter("Train-Acc", ":.4f")
+    train_acc_note = AverageMeter("Acc", ":.4f")
     test_loss_note = AverageMeter("Test-Loss", ":.6f")
-    test_acc_note = AverageMeter("Test-Acc", ":.4f")
+    test_acc_note = AverageMeter("Acc", ":.4f")
     progress_writer = ProgressMeter(frame.epochs, len(train_dataloader), 
                                     [train_loss_note, train_acc_note, test_loss_note, test_acc_note],
                                     prefix="Batch")
@@ -131,7 +132,7 @@ def train(frame, model, optimizer, train_dataloader, eval_dataloader=None, sched
         for epoch in range(frame.start_epoch+1, frame.epochs+1):
             print(f'\nEpoch {epoch}:')
             model.train()  # 开启训练模式，自训练没有测试模式，所以这个可以在训练之前设置
-            for data, label in tqdm(train_dataloader, total=len(train_dataloader), desc="Training:", leave=True):
+            for data, label in tqdm(train_dataloader, total=len(train_dataloader), desc="Training", leave=True):
                 batchs = data.size(0)
                 data, label = data.to(frame.device), label.to(frame.device)
                 optimizer.zero_grad()
@@ -147,7 +148,7 @@ def train(frame, model, optimizer, train_dataloader, eval_dataloader=None, sched
             if eval_dataloader is not None:
                 model.eval()
                 with torch.no_grad():
-                    for data, label in tqdm(eval_dataloader, desc='Testing:', total=len(eval_dataloader), leave=True):
+                    for data, label in tqdm(eval_dataloader, desc='Testing ', total=len(eval_dataloader), leave=True):
                         batchs = data.size(0)
                         data, label = data.to(frame.device), label.to(frame.device)
                         output = model(data)
@@ -239,16 +240,15 @@ def print_result_report(frame, model, ck_pth, eval_dataloader, log_writer):
         conf_matrix = confusion_matrix(all_labels, all_preds)
         kappa = cohen_kappa_score(all_labels, all_preds)
 
-        log_writer.write(f"\n\nTest_acc: {accuracy:.4f}\n")
-        log_writer.write(f"Cohen's Kappa: {kappa:.4f}\n")
+        formatted_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        log_writer.write(f"\n\n{formatted_time} Test_acc: {accuracy:.4f}. Cohen's Kappa: {kappa:.4f}\n")
         log_writer.write(f"Classification Report:\n")
-        log_writer.write(clf_report + "\n\n")
+        log_writer.write(clf_report + "\n")
         log_writer.write("Confusion Matrix:\n")
         log_writer.write(np.array2string(conf_matrix, separator=', '))
         log_writer.write('\n')
         log_writer.flush()
 
-        print("Test Accuracy:", accuracy)
-        print(f"Cohen's Kappa: {kappa:.4f}")
+        print(f"{formatted_time} Test Accuracy: {accuracy:.6f}. Cohen's Kappa: {kappa:.4f}")
         print("Classification Report:\n", clf_report)
         print("Confusion Matrix:\n", conf_matrix)

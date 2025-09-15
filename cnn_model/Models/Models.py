@@ -8,23 +8,26 @@ import torch
 class My_Model(nn.Module):
     def __init__(self, out_classes=None, out_embedding=None, in_shape=None): # 框架需要三个输入
         super().__init__()
+        self.lock_grad = True
         self.unfreeze_idx = None
 
     def _freeze_encoder(self):
-        for param in self.encoder.parameters():
-            param.requires_grad = False
+        if self.lock_grad:
+            for param in self.encoder.parameters():
+                param.requires_grad = False
+            print('The Encoder parameters have been frozen.')
+        else:
+            print('Attention: The Encoder parameters are not frozen! Cause: Too many parameters do not match!')
         
         for param in self.encoder.fc.parameters():
             param.requires_grad = True # encoder 的fc层需要正常梯度传播
         
-
 
     def _load_encoer_params(self, state_dict):
         try:
             self.encoder.load_state_dict(state_dict, strict=True)
         except RuntimeError:
             # 过滤掉不匹配的键
-            print('Atteneion: The encoder weights do not match exactly!')
             model_state_dict = self.encoder.state_dict()
             matched_state_dict = {
                 k: v for k, v in state_dict.items() 
@@ -34,12 +37,17 @@ class My_Model(nn.Module):
             self.encoder.load_state_dict(model_state_dict, strict=False)
             skipped = set(state_dict.keys()) - set(matched_state_dict.keys())
             if skipped:
-                print(f"Skipped loading these keys due to size mismatch: {skipped}")
+                print(f"Atteneion: The encoder weights do not match exactly! Skipped loading these keys due to size mismatch: {skipped}")
+            if len(skipped) <= 2 and 'fc.weight' in skipped: # 只允许fc层参数不匹配
+                self.lock_grad = True
+            else:
+                self.lock_grad = False
+                print(f"{len(skipped)} parameters are skipped, Please check if the pre-trained model is consistent with the parameters of the training model. ")
 
 class Res_3D_18Net(My_Model):
     def __init__(self, out_classes, out_embedding=128, in_shape=None):
         super().__init__()
-        self.encoder = ResNet_3D(block=Basic_Residual_block, layers=[2,2,2,2], num_classes=out_embedding) # 3d卷积残差编码器
+        self.encoder = Res_3D_18Net_encoder(out_embedding=out_embedding) # 3d卷积残差编码器
         self.decoder = deep_classfier(out_embedding, out_classes, mid_channels=1024)
     def forward(self, x):
         if x.dim() == 4:
@@ -53,7 +61,7 @@ class Res_3D_18Net(My_Model):
 class Res_3D_34Net(My_Model):
     def __init__(self, out_classes, out_embedding=128, in_shape=None):
         super().__init__()
-        self.encoder = ResNet_3D(block=Basic_Residual_block, layers=[3,4,6,3], num_classes=out_embedding) # 3d卷积残差编码器
+        self.encoder = Res_3D_34Net_encoder(out_embedding=out_embedding) # 3d卷积残差编码器
         self.decoder = deep_classfier(out_embedding, out_classes, mid_channels=1024)
     def forward(self, x):
         if x.dim() == 4:
@@ -67,7 +75,7 @@ class Res_3D_34Net(My_Model):
 class Res_3D_50Net(My_Model):
     def __init__(self, out_classes, out_embedding=128, in_shape=None):
         super().__init__()
-        self.encoder = ResNet_3D(block=Bottleneck_Residual_block, layers=[3,4,6,3], num_classes=out_embedding) # 3d卷积残差编码器
+        self.encoder = Res_3D_50Net_encoder(out_embedding=out_embedding) # 3d卷积残差编码器
         self.decoder = deep_classfier(out_embedding, out_classes, mid_channels=1024)
     def forward(self, x):
         if x.dim() == 4:
@@ -260,11 +268,11 @@ class MobileNetV2(My_Model):
         x=self.encoder(x)
         x=self.decoder(x)
         return x
-
+    
 class ResNet18(My_Model):
     def __init__(self, out_classes, out_embedding=128, in_shape=None):
         super().__init__()
-        self.encoder = ResNet_2D(block=Basic_Residual_block_2d, layers=[2,2,2,2], out_embedding=out_embedding, in_shape=in_shape)
+        self.encoder = ResNet18_encoder(out_embedding=out_embedding, in_shape=in_shape)
         self.decoder = deep_classfier(out_embedding, out_classes, mid_channels=1024)
     def forward(self, x):
         if x.dim() == 5:
@@ -274,7 +282,34 @@ class ResNet18(My_Model):
         x = self.encoder(x)
         x = self.decoder(x)
         return x
-
+    
+class ResNet34(My_Model):
+    def __init__(self, out_classes, out_embedding=128, in_shape=None):
+        super().__init__()
+        self.encoder = ResNet34_encoder(out_embedding=out_embedding, in_shape=in_shape)
+        self.decoder = deep_classfier(out_embedding, out_classes, mid_channels=1024)
+    def forward(self, x):
+        if x.dim() == 5:
+            x = x.squeeze(1)
+        elif x.dim() != 4:
+            raise ValueError(f"Expected input dimension 4 or 5, but got {x.dim()}")
+        x = self.encoder(x)
+        x = self.decoder(x)
+        return x
+    
+class ResNet50(My_Model):
+    def __init__(self, out_classes, out_embedding=128, in_shape=None):
+        super().__init__()
+        self.encoder = ResNet50_encoder(out_embedding=out_embedding, in_shape=in_shape)
+        self.decoder = deep_classfier(out_embedding, out_classes, mid_channels=1024)
+    def forward(self, x):
+        if x.dim() == 5:
+            x = x.squeeze(1)
+        elif x.dim() != 4:
+            raise ValueError(f"Expected input dimension 4 or 5, but got {x.dim()}")
+        x = self.encoder(x)
+        x = self.decoder(x)
+        return x
 MODEL_DICT = {
     'SRACN':SRACN,
     'Shallow_1DCNN':Common_1DCNN,

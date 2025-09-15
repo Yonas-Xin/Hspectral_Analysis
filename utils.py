@@ -2,6 +2,7 @@ import numpy as np
 import os
 import torch
 import matplotlib.colors as mcolors
+from datetime import datetime
 
 class AverageMeter:
     """Computes and stores the average and current value"""
@@ -41,9 +42,10 @@ class ProgressMeter:
         print("\t".join(entries))
     
     def epoch_summary(self, epoch, other_str=""):
+        formatted_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         entries = ["Epoch" + self.epoch_fmtstr.format(epoch)]
         entries += [str(meter) for meter in self.meters]
-        result = "\t".join(entries)+"\t"+other_str
+        result = f"{formatted_time} "+"\t".join(entries)+"\t"+other_str
         print(result)
         return result
 
