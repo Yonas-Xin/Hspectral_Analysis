@@ -471,7 +471,29 @@ class Hyperspectral_Image:
                 col_block = min(image_block, self.cols - j)
                 block_sampling_mask = self.backward_mask[i:i + row_block, j:j + col_block]
                 yield block_data, block_sampling_mask, i, j
+    
+    def read_dataset_from_mask(self, mask): # 根据mask读取数据，形成数据集
+        """大影像读取数据集"""
+        mask = mask.astype(np.int16)
+        index_list = []
+        label_list = []
+        for y in range(self.rows):
+            for x in range(self.cols):
+                mask_value = mask[y, x]
+                if mask_value != 0:  # 0表示背景，跳过
+                    index_list.append((x, y))
+                    label_list.append(mask_value - 1)  # 标签从0开始
+        label = np.array(label_list, dtype=np.int16)
+        num_samples = len(label_list)
 
+        data = np.zeros((num_samples, self.bands), dtype=np.float32)
+        for i, (x, y) in enumerate(index_list):
+            pixel_data = self.dataset.ReadAsArray(xoff=x, yoff=y, xsize=1, ysize=1).flatten()
+            if pixel_data.dtype == np.int16:
+                pixel_data = pixel_data.astype(np.float32) * 1e-4
+            data[i, :] = pixel_data
+        return data, label
+        
 def to_slice(s=None):
     """s:(int, int) or int or None"""
     if s is None:
