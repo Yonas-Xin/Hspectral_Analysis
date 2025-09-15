@@ -39,7 +39,9 @@ class ProgressMeter:
     def display(self, batch) -> None:
         entries = [self.prefix + self.batch_fmtstr.format(batch)]
         entries += [str(meter) for meter in self.meters]
-        print("\t".join(entries))
+        formatted_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        out = f'{formatted_time} ' + "\t".join(entries)
+        print(out)
     
     def epoch_summary(self, epoch, other_str=""):
         formatted_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")

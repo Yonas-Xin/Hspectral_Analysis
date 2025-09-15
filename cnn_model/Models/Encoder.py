@@ -1,10 +1,11 @@
+"""Attention: 为了统一初始化参数, 所有模型都必须有out_embedding in_shape作为初始化数据"""
 import torch.nn as nn
 import torch.nn.functional as F
 import torch
 import math
 
 class Res_3D_18Net_encoder(nn.Module):
-    def __init__(self, layers_nums=18, out_embedding=1024):
+    def __init__(self, layers_nums=18, out_embedding=1024, in_shape=None):
         super().__init__()
         self.net = ResNet_3D(layers_nums, out_embedding=out_embedding)
         self.avgpool = nn.AdaptiveAvgPool3d((1,1,1))
@@ -18,7 +19,7 @@ class Res_3D_18Net_encoder(nn.Module):
         return x
 
 class Res_3D_34Net_encoder(nn.Module):
-    def __init__(self, layers_nums=34, out_embedding=1024):
+    def __init__(self, layers_nums=34, out_embedding=1024, in_shape=None):
         super().__init__()
         self.net = ResNet_3D(layers_nums, out_embedding=out_embedding)
         self.avgpool = nn.AdaptiveAvgPool3d((1,1,1))
@@ -32,7 +33,7 @@ class Res_3D_34Net_encoder(nn.Module):
         return x
 
 class Res_3D_50Net_encoder(nn.Module):
-    def __init__(self, layers_nums=50, out_embedding=1024):
+    def __init__(self, layers_nums=50, out_embedding=1024, in_shape=None):
         super().__init__()
         self.net = ResNet_3D(layers_nums, out_embedding=out_embedding)
         self.avgpool = nn.AdaptiveAvgPool3d((1,1,1))
@@ -247,7 +248,7 @@ class ResNet_2D(nn.Module): # 不包含平均池化层与线性映射层
 
 class SRACN_Encoder(nn.Module): # 以前训练的时候这里的类名为: Spe_Spa_Attenres_Encoder
     '''6个残差块和一个卷积块'''
-    def __init__(self, in_shape, out_embedding=1024):
+    def __init__(self, out_embedding=1024, in_shape=None):
         super().__init__()
         bands, H, W = in_shape
         self.spectral_attention = ECA_SpectralAttention_3d(bands, 2, 1)# 光谱注意力
@@ -274,7 +275,7 @@ class SRACN_Encoder(nn.Module): # 以前训练的时候这里的类名为: Spe_S
         return self.fc(x)
 
 class Common_3DCNN_Encoder(nn.Module):
-    def __init__(self, out_embedding=128):
+    def __init__(self, out_embedding=128, in_shape=None):
         super().__init__()
         self.conv1 = Common_3d(1, 64, kernel_size=3, padding=1, stride=(2,1,1))
         self.pool1 = nn.MaxPool3d(kernel_size=2, stride=2)
@@ -282,7 +283,7 @@ class Common_3DCNN_Encoder(nn.Module):
         self.conv3 = Common_3d(128, 256, kernel_size=(3,3,3), padding=(1,1,1), stride=(2,1,1))
         self.conv4 = Common_3d(256, 512, kernel_size=(3,3,3), padding=(1,1,1), stride=(2,1,1))
         self.pool2 = nn.AdaptiveAvgPool3d((1,1,1))
-        self.fc = nn.Linear(64, out_features=out_embedding)
+        self.fc = nn.Linear(512, out_features=out_embedding)
      
     def forward(self, x):
         x = self.pool1(self.conv1(x))
@@ -293,7 +294,7 @@ class Common_3DCNN_Encoder(nn.Module):
         return self.fc(x)
 
 class Common_1DCNN_Encoder(nn.Module):
-    def __init__(self, out_embedding=1024):
+    def __init__(self, out_embedding=1024, in_shape=None):
         super().__init__()
         self.conv1 = Common_1d(1, 64, kernel_size=7, padding=3, stride=2)
         self.pool1 = nn.MaxPool1d(kernel_size=2, stride=2)
@@ -329,7 +330,7 @@ class Common_2DCNN_Encoder(nn.Module):
         self.conv4 = Common_2d(256, 512, kernel_size=3, padding=1)
         self.pool3 = nn.AdaptiveAvgPool2d((1, 1))
 
-        self.fc = nn.Linear(64, out_embedding)
+        self.fc = nn.Linear(512, out_embedding)
 
     def forward(self, x):
         x = self.conv1(x)

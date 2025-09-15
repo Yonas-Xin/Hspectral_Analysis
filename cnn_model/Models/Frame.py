@@ -130,7 +130,8 @@ def train(frame, model, optimizer, train_dataloader, eval_dataloader=None, sched
                                     prefix="Batch")
     try:
         for epoch in range(frame.start_epoch+1, frame.epochs+1):
-            print(f'\nEpoch {epoch}:')
+            formatted_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            print(f'\n{formatted_time} Epoch {epoch}:')
             model.train()  # 开启训练模式，自训练没有测试模式，所以这个可以在训练之前设置
             for data, label in tqdm(train_dataloader, total=len(train_dataloader), desc="Training", leave=True):
                 batchs = data.size(0)

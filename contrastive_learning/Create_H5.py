@@ -6,7 +6,7 @@ if str(project_root) not in sys.path:
     sys.path.append(str(project_root))
 
 import h5py
-from contrastive_learning.Models.Data import Dataset_3D,read_tif_with_gdal
+from contrastive_learning.Models.Data import Contrastive_Dataset,read_tif_with_gdal
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from utils import read_txt_to_list
@@ -18,7 +18,7 @@ def create_h5_dataset(tif_paths, output_h5_path, batch=32):
     :param output_h5_path: 输出的HDF5文件路径
     :param chunk_size: HDF5 chunk大小
     """
-    datasets = Dataset_3D(tif_paths)
+    datasets = Contrastive_Dataset(tif_paths)
     dataloader = DataLoader(datasets, batch_size=batch, shuffle=False, num_workers=4)
     sample_shape = read_tif_with_gdal(tif_paths[0].split()[0]).shape # 获取第一个样本的形状 (138, 25, 25)
     num_samples = len(datasets)

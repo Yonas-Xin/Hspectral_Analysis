@@ -172,7 +172,7 @@ class SRACN(My_Model):
 
 # ==============================其他论文中的模型==============================
 class SSRN(My_Model):
-    """code from: https://github.com/zilongzhong/SSRN"""
+    """code from: https://github.com/zilongzhong/SSRN SSRN以4D 为输入"""
     def __init__(self, out_classes, out_embedding=None, in_shape=None):
         super(SSRN, self).__init__()
         self.encoder = SSRN_encoder(in_shape=in_shape)

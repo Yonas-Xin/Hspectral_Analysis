@@ -1,17 +1,19 @@
 import torch.nn as nn
 import torch.nn.functional as F
-from contrastive_learning.Models.Encoder import *
+from contrastive_learning.Models.Encoder import Contrastive_Model
 import torch
     
-class Ete_3D(nn.Module):
-    def __init__(self, 
-                 in_shape, 
-                 base_model=Spe_Spa_Attenres,
-                 out_embedding=1024, 
+class Ete_Model(nn.Module):
+    def __init__(self,
+                 encoder_model_name : str,
+                 out_embedding: int = 1024,
+                 in_shape : tuple = None, 
+                 K: int = 65536, # 为了与Moco初始化对应，这里不管
+                 m: float = 0.999,
                  T=0.07):
         super().__init__()  
-        self.encoder_q = base_model(out_embedding=out_embedding, in_shape=in_shape)
-        self.encoder_k = base_model(out_embedding=out_embedding, in_shape=in_shape)
+        self.encoder_q = Contrastive_Model(encoder_model_name=encoder_model_name, out_embedding=out_embedding, in_shape=in_shape)
+        self.encoder_k = Contrastive_Model(encoder_model_name=encoder_model_name, out_embedding=out_embedding, in_shape=in_shape)
         self.T = T
         for param_q, param_k in zip(
             self.encoder_q.parameters(), self.encoder_k.parameters()
@@ -45,12 +47,11 @@ class Ete_3D(nn.Module):
         labels = torch.zeros(logits.shape[0], dtype=torch.long).to(input_q.device)
         return logits, labels
 
-class Moco3D(nn.Module): # 单GPU训练的Moco框架
+class Moco_Model(nn.Module): # 单GPU训练的Moco框架
     def __init__(self, 
-                 base_model: nn.Module = Contra_Res18, 
+                 encoder_model_name: str, 
                  out_embedding: int = 1024, 
-                 in_shape: tuple = (138, 17, 17),
-                 dim: int = 128,
+                 in_shape: tuple = None,
                  K: int = 65536,
                  m: float = 0.999,
                  T: float = 0.7):
@@ -59,8 +60,8 @@ class Moco3D(nn.Module): # 单GPU训练的Moco框架
         self.T = T
         self.m = m
 
-        self.encoder_q = base_model(out_embedding=out_embedding, in_shape=in_shape)
-        self.encoder_k = base_model(out_embedding=out_embedding, in_shape=in_shape)
+        self.encoder_q = Contrastive_Model(encoder_model_name=encoder_model_name, out_embedding=out_embedding, in_shape=in_shape)
+        self.encoder_k = Contrastive_Model(encoder_model_name=encoder_model_name, out_embedding=out_embedding, in_shape=in_shape)
         for param_q, param_k in zip(
             self.encoder_q.parameters(), self.encoder_k.parameters()
         ):
@@ -68,7 +69,7 @@ class Moco3D(nn.Module): # 单GPU训练的Moco框架
             param_k.requires_grad = False  # 确保k与q的初始参数一致，k模型不反向传播参数
 
         # create the queue
-        self.register_buffer("queue", torch.randn(dim, K))
+        self.register_buffer("queue", torch.randn(128, K)) # 模型输出维度默认为128. 所以这里写128
         self.queue = nn.functional.normalize(self.queue, dim=0)
 
         self.register_buffer("queue_ptr", torch.zeros(1, dtype=torch.long))

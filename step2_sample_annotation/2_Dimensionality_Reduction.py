@@ -15,7 +15,7 @@ from torch.utils.data import DataLoader
 from contrastive_learning.Models import Models
 from utils import read_txt_to_list, save_matrix_to_csv
 from tqdm import tqdm
-from contrastive_learning.Models.EndToEnd_Frame import Contrasive_learning_predict_frame
+from contrastive_learning.Models.Frame import Contrasive_learning_predict_frame
 from core import Hyperspectral_Image
 def set_embedding_idx(input_shp, input_tif):
     """为shp文件创建索引字段Emb_Idx,字段0为无编码点,字段1-n为有编码点"""
@@ -77,7 +77,7 @@ if __name__ == '__main__':
         device = torch.device('cuda')
         dataset = DynamicCropDataset(input_img, input_shp, block_size=17)
         dataloader = DataLoader(dataset, shuffle=False, batch_size=24)
-        model = Models.Ete_3D(dataset.data_shape, out_embedding=embedding_dims)  # 模型实例化
+        model = Models.Ete_Model(dataset.data_shape, out_embedding=embedding_dims)  # 模型实例化
         state_dict = torch.load(model_path, weights_only=True, map_location=device)
         model.load_state_dict(state_dict['model'])
         frame = Contrasive_learning_predict_frame(device=device)

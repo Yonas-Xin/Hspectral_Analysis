@@ -1,1 +1,1 @@
-from cnn_model.Models.Encoder import Spe_Spa_Attenres_Encoder
+from cnn_model.Models.Encoder import SRACN_Encoder

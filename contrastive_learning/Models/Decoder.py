@@ -1,7 +1,7 @@
 import torch.nn as nn
 import torch.nn.functional as F
 
-class Spe_Spa_Atten_Decoder(nn.Module):
+class Contrastive_Decoder(nn.Module):
     def __init__(self, in_channels, out_channels, mid_channels=128):
         super().__init__()
         self.fc1 = nn.Linear(in_channels, 128)

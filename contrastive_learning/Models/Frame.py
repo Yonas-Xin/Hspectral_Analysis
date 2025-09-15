@@ -9,12 +9,10 @@ from tqdm import tqdm
 from multiprocessing import cpu_count
 from torch.utils.tensorboard import SummaryWriter
 import torch
-from contrastive_learning.Models.loss import InfoNCELoss
 import traceback
-import time
 from utils import AverageMeter, ProgressMeter, topk_accuracy
 
-class EndToEnd_Frame:
+class Contrastive_Frame:
     def __init__(self, augment, model_name, min_lr=1e-7, epochs=300, device=None, if_full_cpu=True):
         self.augment = augment
         self.loss = nn.CrossEntropyLoss()
@@ -106,13 +104,10 @@ def load_parameter(frame, model, optimizer, scheduler=None, ck_pth=None): # åŠ è
 def train(frame, model, optimizer, dataloader, scheduler=None, ck_pth=None, clean_noise_samples=False, clean_th=0.99):
     def finish_work():
         try:
-            result = f'Model saved at Epoch{model_save_epoch}. \nThe best top1-acc:{frame.epoch_max_acc}. \nThe best training_loss:{frame.train_epoch_min_loss}'
-            run_time = cal_time(time.time() - start_time)
+            formatted_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            result = f'{formatted_time} Model saved at Epoch{model_save_epoch}. The best top1-acc:{frame.epoch_max_acc}. The best training_loss:{frame.train_epoch_min_loss}'
             log_writer.write(result + '\n')
-            log_writer.write("Program runtime:" + run_time + '\n')
-            print(result + '\n' + run_time)
         except:pass
-    start_time = time.time()
     log_writer = open(frame.log_path, 'w')
     if not os.path.exists(frame.tensorboard_dir):
         os.makedirs(frame.tensorboard_dir)
@@ -131,7 +126,8 @@ def train(frame, model, optimizer, dataloader, scheduler=None, ck_pth=None, clea
     # start training
     try:
         for epoch in range(frame.start_epoch+1, frame.epochs+1):
-            print(f'\nEpoch {epoch}:')
+            formatted_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            print(f'\n{formatted_time} Epoch {epoch}:')
             for i,block in tqdm(enumerate(dataloader), total=len(dataloader), desc="Train", leave=True):
                 block = block.to(frame.device) # batch,C,H,W
                 batchs = block.size(0)
