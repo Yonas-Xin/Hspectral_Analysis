@@ -23,15 +23,15 @@ class Hyperspectral_Image:
         self.dataset, self.rows, self.cols, self.bands = None, None, None, None
         self.no_data = None
         self.sampling_position = None # 二维矩阵，标记了样本的取样点和类别信息
-        self.cluster = None
-        self.backward_mask = None # [rows, cols]
-        self.ori_img = None # [rows, cols, 3]
-        self.enhance_data = None # [rows, cols, bands]
-        self.enhance_img = None #[rows, cols, 3]
-        
+        self.backward_mask = None # [rows, cols] 背景掩膜
+        self.ori_img = None # [rows, cols, 3] 拉伸影像
+        self.enhance_data = None # [rows, cols, bands] 增强原始数据
+        self.enhance_img = None #[rows, cols, 3] 增强-拉伸影像
+        self.geotransform = None
+        self.projection = None
+
         self.slic_label = None # [rows， cols] 
         self.slic_img = None # [rows, cols, 3]
-
     def __del__(self):
         self.dataset = None # 释放内存
 
@@ -41,39 +41,57 @@ class Hyperspectral_Image:
             bands = dataset.RasterCount
             rows, cols = dataset.RasterYSize, dataset.RasterXSize
             self.dataset, self.rows, self.cols, self.bands = dataset, rows, cols, bands
-            # self.data = self.get_dataset()
+            self.geotransform = dataset.GetGeoTransform()
+            self.projection = dataset.GetProjection()
             if init_fig: # 根据需要加载影像数据
                 self.init_fig_data(rgb=rgb)
             return 0 # 代表数据导入成功
         except (AttributeError,RuntimeError):
             return 1
 
-    def create_vector(self,mask,out_file):
-        mask_to_vector_gdal(mask, self.dataset.GetGeoTransform(), self.dataset.GetProjection(),
+    def create_vector(self,mask,out_file): # mask 转单矢量点
+        mask_to_vector_gdal(mask, self.geotransform, self.projection,
                                    output_shapefile=out_file)
-    def create_mutivector(self, mask_matrix, out_dir, out_dir_name):
-        mask_to_multivector(mask_matrix, self.dataset.GetGeoTransform(), self.dataset.GetProjection(),
+    def create_mutivector(self, mask_matrix, out_dir, out_dir_name): # mask 转多矢量点
+        mask_to_multivector(mask_matrix, self.geotransform, self.projection,
                             output_dir=out_dir, output_dir_name=out_dir_name)
-    def create_mask(self, input_file):
-        return vector_to_mask(input_file, self.dataset.GetGeoTransform(), self.rows, self.cols)
-    def create_mask_from_mutivector(self, inputdir):
-        return mutivetor_to_mask(inputdir, self.dataset.GetGeoTransform(), self.rows, self.cols)
+        
+    def create_mask(self, input_file): # 矢量点转mask，点的数值由“class”字段确定
+        return vector_to_mask(input_file, self.geotransform, self.rows, self.cols)
+    
+    def create_mask_from_mutivector(self, inputdir): # 多矢量点转mask
+        return mutivetor_to_mask(inputdir, self.geotransform, self.rows, self.cols)
+    
+    def save_tif(self, filename, img_data, nodata = None):
+        '''将(rows, cols,  bands)或(rows, cols)的数据存为tif格式, tif具有与img相同的投影信息'''
+        nodata = self.no_data if nodata is None else nodata
+        if len(img_data.shape) == 3:
+            write_data_to_tif(filename, img_data.transpose(2,0,1), self.geotransform, self.projection,
+                          nodata_value=nodata)
+        elif len(img_data.shape) == 2:
+            write_data_to_tif(filename, img_data, self.geotransform, self.projection,
+                nodata_value=nodata)
+        else:
+            raise ValueError("The input dims must be 2 or 3")
+        return True
+    
+    def face_vector_to_mask(self, shp_file): # 矢量面转mask
+        return face_vector_to_mask(shp_file, self.geotransform, self.projection, self.rows, self.cols)
 
-    def init_fig_data(self, rgb = (1,2,3)):
+    def init_fig_data(self, rgb = (1,2,3)): # 计算背景掩膜，生成拉伸图像
         band = self.dataset.GetRasterBand(1)
         self.no_data = band.GetNoDataValue()
         self.backward_mask = self.ignore_backward()  # 初始化有效像元位置
         r,g,b = rgb
         self.compose_rgb(r=r, g=g, b=b)
 
-    def update(self,r,g,b,show_enhance_img=False):
+    def update(self,r,g,b,show_enhance_img=False): # 根据所选择rgb组合更新拉伸图像
         if show_enhance_img:
             self.compose_enhance(r,g,b)
         else:
             self.compose_rgb(r,g,b)
 
-    def compose_rgb(self, r, g, b, stretch=True):
-        # 合成彩色图像
+    def compose_rgb(self, r, g, b, stretch=True): # 合成彩色图像
         try:
             r_band = self.get_band_data(r)
             g_band = self.get_band_data(g)
@@ -95,7 +113,7 @@ class Hyperspectral_Image:
         self.ori_img[self.backward_mask] = rgb
         return self.ori_img
 
-    def compose_enhance(self, r, g, b, stretch=True):
+    def compose_enhance(self, r, g, b, stretch=True): # 合成增强彩色图像
         '''这里为了和tif波段组合统一，读取enhance_data波段数据，波段减一'''
         r_band = self.enhance_data[:, :, r-1]
         g_band = self.enhance_data[:, :, g-1]
@@ -132,13 +150,10 @@ class Hyperspectral_Image:
             dataset = dataset.astype(np.float32) * scale
         return dataset
 
-    def ignore_backward(self, nodata_value = nodata_value):
+    def ignore_backward(self):
         '''分块计算背景掩膜值，默认分块大小为512'''
-        block_size = 512
-        if self.cols> (2 * block_size) and self.rows > (2 * block_size):
-            pass
-        else:
-            block_size = min(self.rows, self.cols) # 如果行列都较小，则使用行列最小值作为分块大小
+        no_data = self.no_data if self.no_data is not None else nodata_value # 如果原始数据没有nodata值，默认为0
+        block_size = 512 if self.cols> (2 * 512) and self.rows > (2 * 512) else min(self.rows, self.cols)
         mask = np.empty((self.rows, self.cols), dtype=bool)
         for i in range(0, self.rows, block_size):
             for j in range(0, self.cols, block_size):
@@ -147,12 +162,13 @@ class Hyperspectral_Image:
                 actual_cols = min(block_size, self.cols - j)
                 # 读取当前块的所有波段数据（形状: [bands, actual_rows, actual_cols]）
                 block_data = self.dataset.ReadAsArray(xoff=j, yoff=i, xsize=actual_cols, ysize=actual_rows)
-                block_mask = np.all(block_data == nodata_value, axis=0)
+                block_mask = np.all(block_data == no_data, axis=0)
                 mask[i:i + actual_rows, j:j + actual_cols] = ~block_mask
         return mask
 
-    def image_enhance(self, f='PCA', n_components=10, nodata_value=nodata_value, row_slice=None, col_slice=None, band_slice=None):
+    def image_enhance(self, f='PCA', n_components=10, row_slice=None, col_slice=None, band_slice=None):
         # 影像增强
+        no_data = self.no_data if self.no_data is not None else nodata_value # 如果原始数据没有nodata值，默认为0
         ori_dataset = self.get_dataset().transpose(1, 2, 0)
         dataset = ori_dataset[self.backward_mask]
         if f == 'PCA':
@@ -164,37 +180,26 @@ class Hyperspectral_Image:
             row_slice, col_slice, band_slice = to_slice(row_slice), to_slice(col_slice), to_slice(band_slice)
             noise_stats = noise_estimation(ori_dataset[row_slice, col_slice, band_slice], mask=mask)
             dataset = mnf_standard(dataset, noise_stats, n_components)
-        self.enhance_data = np.full((self.rows, self.cols, n_components), nodata_value, dtype=np.float32)
+        self.enhance_data = np.full((self.rows, self.cols, n_components), no_data, dtype=np.float32)
         self.enhance_data[self.backward_mask] = dataset
         self.compose_enhance(1,2,3)
         return self.enhance_img
     
-    def slic(self, n_segments, compactness=10, show_img=False, n_components=10):
+    def slic(self, n_segments, compactness=10, n_components=10):
         '''超像素分割'''
-        if self.enhance_img is None:
-             # 使用pca增强影像分割，pca增强影像的视觉效果更好
-            self.image_enhance(f='PCA', n_components=n_components)
-        if show_img:
-            plt.imshow(self.enhance_img)
-            plt.axis('off')
-            plt.show()
-
-        self.slic_label = superpixel_segmentation(self.enhance_img, n_segments=n_segments, compactness=compactness, mask=self.backward_mask)
-        print(f'超像素数量:{np.max(self.slic_label)}')
+        self.image_enhance(f='PCA', n_components=n_components) # 使用PCA增强
+        slic_label = superpixel_segmentation(self.enhance_img, n_segments=n_segments, compactness=compactness, mask=self.backward_mask)
+        print(f'超像素数量:{np.max(slic_label)}')
 
         # 生成超像素图像
         slic_img = np.zeros_like(self.enhance_img)
-        for seg_val in np.unique(self.slic_label):  # 遍历所有超像素区域
-            mask = self.slic_label == seg_val  # 选出当前超像素区域
+        for seg_val in np.unique(slic_label):  # 遍历所有超像素区域
+            mask = slic_label == seg_val  # 选出当前超像素区域
             mean_color = self.enhance_img[mask].mean(axis=0)  # 计算均值颜色
             slic_img[mask] = mean_color  # 赋值给对应的区域
-        self.slic_img = slic_img
-        if show_img:
-            plt.imshow(slic_img)
-            plt.axis('off')
-            plt.show()
+        return slic_label, slic_img
 
-    def ppi(self, niters=1000, threshold=0, centered=False):
+    def ppi(self, niters=2000, threshold=0, centered=False):
         dataset = self.get_dataset()
         dataset = dataset[self.backward_mask]
         dataset = mnf_standard(dataset, self.rows, self.cols, n_components=24)
@@ -203,23 +208,19 @@ class Hyperspectral_Image:
         dataset = dataset.reshape(self.rows, self.cols)
         return dataset
 
-    def superpixel_sampling(self, n_segments=1024, compactness=10, niters=1000, threshold=0, centered=False,
-                            samples=8000, embedding_nums=10, f='MNF', show_img=False, row_slice=None, col_slice=None, band_slice=None):
-        '''超像素分割-ppi采样'''
-        if self.slic_label is None:
-            # 如果没有进行超像素分割，则进行分割,同时这里面生成了pca增强影像
-            self.slic(n_segments=n_segments, compactness=compactness, n_components=embedding_nums, show_img=show_img)
-        labels = np.unique(self.slic_label) # 超像素的标签
+    def superpixel_sampling(self, slic_label, enhanced_data,  max_samples=20, niters=2000, threshold=0, centered=False):
+        '''超像素分割-ppi采样
+        slic_label: 超像素标签矩阵
+        enhanced_data: 增强后的数据矩阵
+        max_samples: 每个超像素区域的最大采样数量'''
+        labels = np.unique(slic_label) # 超像素的标签
         labels = labels[labels > 0]  # 排除背景标签
-        out_labels = np.zeros_like(self.slic_label) # PPI提取结果，最后样本提取结果
-        if f=='MNF': # 如果是MNF增强，重新计算增强数据，覆盖原来的增强数据
-            self.image_enhance(f='MNF', n_components=embedding_nums, row_slice=row_slice, col_slice=col_slice, band_slice=band_slice)
-        enhanced_data = self.enhance_data # 增强数据
+        out_labels = np.zeros_like(slic_label) # PPI提取结果，最后样本提取结果
 
         areas = [] # 面积参数
         var_sums = [] # 光谱反差参数
         for label in labels:
-            mask = (self.slic_label == label)
+            mask = (slic_label == label)
             area = np.sum(mask) # 当前超像素区域的像素数量
             areas.append(area)
             datasets = enhanced_data[mask]
@@ -233,7 +234,7 @@ class Hyperspectral_Image:
         areas = np.array(areas, dtype=float)
         var_sums = np.array(var_sums, dtype=float)
 
-            # Min-Max 归一化函数（避免除以零）
+        # Min-Max 归一化函数（避免除以零）
         eps = 1e-12
         def min_max_norm(x):
             if np.all(x == x[0]):
@@ -247,16 +248,13 @@ class Hyperspectral_Image:
         num_features = 2  # 包含 area_inv
         scores = (norm_var + area_inv) / num_features # 0~1
 
-        # -------------------------------------------------------------------------
-        # 3. 根据得分确定采样数量 (scores * 20, 限制 [1,20])
-        # -------------------------------------------------------------------------
-        max_samples = 20
+        # 根据得分确定采样数量 (scores * 20, 限制 [1,20])
         sample_counts = np.round(scores * max_samples).astype(int)
         sample_counts[sample_counts < 1] = 1
         sample_counts[sample_counts > max_samples] = max_samples
 
         for idx, label in enumerate(labels):
-            mask = (self.slic_label==label)
+            mask = (slic_label==label)
             datasets = enhanced_data[mask]
             ppi_label = ppi_manual(datasets, niters=niters, threshold=threshold, centered=centered)
 
@@ -269,35 +267,35 @@ class Hyperspectral_Image:
         print(f'采样数量：{np.sum(out_labels)}')
         return out_labels
 
-    def old_superpixel_sampling(self, n_segments=1024, compactness=10, niters=1000, threshold=0, centered=False,
-                            samples=8000, embedding_nums=10, f='MNF', row_slice=None, col_slice=None, band_slice=None):
-        '''超像素分割-ppi采样'''
-        if self.slic_label is None:
-            # 如果没有进行超像素分割，则进行分割,同时这里面生成了pca增强影像
-            self.slic(n_segments=n_segments, compactness=compactness, n_components=embedding_nums, show_img=True)
-        labels = np.unique(self.slic_label)
-        out_labels = np.zeros_like(self.slic_label)
-        if f=='MNF': # 如果是MNF增强，重新计算增强数据，覆盖原来的增强数据
-            self.image_enhance(f='MNF', n_components=embedding_nums, row_slice=None, col_slice=None, band_slice=None)
-        mnf_data = self.enhance_data
-        for label in labels:
-            if label == 0:  # 跳过背景标签
-                continue
-            mask = self.slic_label==label
-            datasets = mnf_data[mask]
-            ppi_label = ppi_manual(datasets, niters=niters, threshold=threshold, centered=centered)
-            out_labels[mask] = ppi_label
-        valid_mask = out_labels > 0
-        list = out_labels[valid_mask].tolist()
-        list.sort(reverse=True) # 从大到小排序
-        try:
-            th = list[samples]
-        except:
-            th = list[-1]
-        print(f'the real seg threshold:{th}')
-        return (out_labels>=th).astype(np.int8)
+    # def old_superpixel_sampling(self, n_segments=1024, compactness=10, niters=2000, threshold=0, centered=False,
+    #                         samples=8000, embedding_nums=10, f='MNF', row_slice=None, col_slice=None, band_slice=None):
+    #     '''超像素分割-ppi采样'''
+    #     if self.slic_label is None:
+    #         # 如果没有进行超像素分割，则进行分割,同时这里面生成了pca增强影像
+    #         self.slic(n_segments=n_segments, compactness=compactness, n_components=embedding_nums, show_img=True)
+    #     labels = np.unique(self.slic_label)
+    #     out_labels = np.zeros_like(self.slic_label)
+    #     if f=='MNF': # 如果是MNF增强，重新计算增强数据，覆盖原来的增强数据
+    #         self.image_enhance(f='MNF', n_components=embedding_nums, row_slice=None, col_slice=None, band_slice=None)
+    #     mnf_data = self.enhance_data
+    #     for label in labels:
+    #         if label == 0:  # 跳过背景标签
+    #             continue
+    #         mask = self.slic_label==label
+    #         datasets = mnf_data[mask]
+    #         ppi_label = ppi_manual(datasets, niters=niters, threshold=threshold, centered=centered)
+    #         out_labels[mask] = ppi_label
+    #     valid_mask = out_labels > 0
+    #     list = out_labels[valid_mask].tolist()
+    #     list.sort(reverse=True) # 从大到小排序
+    #     try:
+    #         th = list[samples]
+    #     except:
+    #         th = list[-1]
+    #     print(f'the real seg threshold:{th}')
+    #     return (out_labels>=th).astype(np.int8)
 
-    def block_generator(self, block_size=256):
+    def block_generator(self, block_size=512):
         if isinstance(block_size, tuple):
             rows, cols = block_size
         elif isinstance(block_size, int):
@@ -314,16 +312,16 @@ class Hyperspectral_Image:
                     block_data = block_data.astype(np.float32) * 1e-4
                 yield block_data
 
-    def block_mnf_ppi(self, block_size=256):
-        '''分块mnf降维，ppi端元提取'''
-        out_labels = np.zeros((self.rows, self.cols))
-        for block, position_mask in zip(self.block_generator(block_size), block_generator(out_labels, block_size)):
-            bands, rows, cols = block.shape
-            block = block.transpose(1,2,0).reshape(-1, bands)
-            mnf_data = mnf_standard(block, rows, cols, n_components=10).reshape(rows,cols,-1)
-            ppi_label = ppi_manual(mnf_data, niters=1000, threshold=0, centered=False)
-            out_labels[position_mask==1] = ppi_label
-        return out_labels
+    # def block_mnf_ppi(self, block_size=512):
+    #     '''分块mnf降维，ppi端元提取'''
+    #     out_labels = np.zeros((self.rows, self.cols))
+    #     for block, position_mask in zip(self.block_generator(block_size), block_generator(out_labels, block_size)):
+    #         bands, rows, cols = block.shape
+    #         block = block.transpose(1,2,0).reshape(-1, bands)
+    #         mnf_data = mnf_standard(block, rows, cols, n_components=10).reshape(rows,cols,-1)
+    #         ppi_label = ppi_manual(mnf_data, niters=2000, threshold=0, centered=False)
+    #         out_labels[position_mask==1] = ppi_label
+    #     return out_labels
     
     def generate_sampling_mask(self, sample_fraction=0.001):
         """经过该函数进行随机取样，取样位置的标签为1"""
@@ -342,16 +340,16 @@ class Hyperspectral_Image:
         return self.sampling_position
 
     def crop_image_by_mask_block(self, filepath, image_block=256, block_size=30, position_mask=None, name="Block_"):
-        '''分块裁剪样本，适合无法一次加载到内存的大影像，生成一个txt文件（数据排序按照图像块中点行列顺序排序），依据的mask矩阵为sampling_position，后续考虑更换
-        生成的影像自动转化为float32类型，缩放为0-1范围
+        '''分块裁剪样本，适合无法一次加载到内存的大影像，生成一个txt文件（数据排序按照图像块中点行列顺序排序）
+        依据的mask矩阵为sampling_position，后续考虑更换。生成的影像自动转化为float32类型，缩放为0-1范围
         return: None 生成txt文本，生成采样位置矩阵csv文件，生成分块影像数据'''
         if position_mask is None:
             position_mask = self.sampling_position
         if position_mask is None or np.max(position_mask)<=0:
             raise ValueError('sampling_position have to be valid!')
         save_matrix_to_csv(position_mask, os.path.join(filepath, '.sampling_position.csv')) # 保存采样位置矩阵
-        geotransform = self.dataset.GetGeoTransform()
-        projection = self.dataset.GetProjection()
+        geotransform = self.geotransform
+        projection = self.projection
         left_top = int(block_size / 2 - 1) if block_size % 2 == 0 else int(block_size // 2)
         right_bottom = int(block_size / 2) if block_size % 2 == 0 else int(block_size // 2)
         num = 1
@@ -434,7 +432,7 @@ class Hyperspectral_Image:
         write_list_to_txt(sorted_paths, dataset_path) # 打印txt文件
         print('样本裁剪完成')
 
-    def block_images(self, image_block=256, block_size=30):
+    def block_images(self, image_block=256, block_size=30): # 该迭代器用于预测大影像
         """迭代器，返回分块数据和块的左上角坐标"""
         left_top = int(block_size / 2 - 1) if block_size % 2 == 0 else int(block_size // 2)
         right_bottom = int(block_size / 2) if block_size % 2 == 0 else int(block_size // 2)
@@ -474,28 +472,6 @@ class Hyperspectral_Image:
                 block_sampling_mask = self.backward_mask[i:i + row_block, j:j + col_block]
                 yield block_data, block_sampling_mask, i, j
 
-    def save_tif(self, filename, img_data, nodata = None):
-        '''将(rows, cols,  bands)或(rows, cols)的数据存为tif格式, tif具有与img相同的投影信息'''
-        nodata = self.no_data if nodata is None else nodata
-        if len(img_data.shape) == 3:
-            write_data_to_tif(filename, img_data.transpose(2,0,1), self.dataset.GetGeoTransform(), self.dataset.GetProjection(),
-                          nodata_value=nodata)
-        elif len(img_data.shape) == 2:
-            write_data_to_tif(filename, img_data, self.dataset.GetGeoTransform(), self.dataset.GetProjection(),
-                nodata_value=nodata)
-        else:
-            raise ValueError("The input dims must be 2 or 3")
-        return True
-    
-    def face_vector_to_mask(self, shp_file):
-        return face_vector_to_mask(shp_file, self.dataset.GetGeoTransform(), self.dataset.GetProjection(), self.rows, self.cols)
-
-def show_img(data, rgb=(1,2,3)):
-    image = data[rgb,:,:].transpose(1,2,0)
-    plt.imshow(image)
-    plt.axis('off')
-    plt.show()
-
 def to_slice(s=None):
     """s:(int, int) or int or None"""
     if s is None:
@@ -509,10 +485,27 @@ def linear_2_percent_stretch(band_data, mask=None):
     :param mask: [rows, cols], bool类型，True表示有效像元
     :return: stretched_band[valid_pixels,]
     '''
+    if mask is not None and np.sum(mask) == 0:
+        return np.zeros_like(band_data)
     band_data = band_data[mask] if mask is not None else band_data.reshape(band_data.shape[0]*band_data.shape[1])
     # 计算2%和98%分位数
     lower_percentile = np.percentile(band_data, 2)
     upper_percentile = np.percentile(band_data, 98)
+    if lower_percentile == upper_percentile:
+        return np.zeros_like(band_data)
+    # 拉伸公式：将数值缩放到 0-1 范围内
+    stretched_band = np.clip((band_data - lower_percentile) / (upper_percentile - lower_percentile), 0, 1)
+    return stretched_band
+
+def linear_percent_stretch(band_data, mask=None):
+    if mask is not None and np.sum(mask) == 0:
+        return np.zeros_like(band_data)
+    band_data = band_data[mask] if mask is not None else band_data.reshape(band_data.shape[0]*band_data.shape[1])
+    # 计算2%和98%分位数
+    lower_percentile = np.min(band_data)
+    upper_percentile = np.max(band_data)
+    if lower_percentile == upper_percentile:
+        return np.zeros_like(band_data)
     # 拉伸公式：将数值缩放到 0-1 范围内
     stretched_band = np.clip((band_data - lower_percentile) / (upper_percentile - lower_percentile), 0, 1)
     return stretched_band
@@ -573,7 +566,7 @@ def superpixel_segmentation(data_pca, n_segments=1024, compactness=10, mask=None
     )
     return segments
 
-def ppi(data, niters=1000, threshold=0, centered=False):
+def ppi(data, niters=2000, threshold=0, centered=False):
     '''data:[rows, cols, bands]'''
     return spy.ppi(data, niters=niters, threshold=threshold, centered=centered)
 

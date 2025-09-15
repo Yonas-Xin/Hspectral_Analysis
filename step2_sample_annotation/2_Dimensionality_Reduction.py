@@ -67,7 +67,7 @@ def set_embedding_idx(input_shp, input_tif):
     im_dataset = None
 
 model_path = r'C:\Users\85002\Desktop\模型\模型pth与log\Spe_Spa_Attenres110_retrain_202504281258.pth'
-input_img = r'C:\Users\85002\OneDrive - cugb.edu.cn\研究区地图数据\研究区影像数据\research_area1.dat'
+input_img = r"C:\Users\85002\OneDrive - cugb.edu.cn\项目数据\张川铀资源\ZY_result\Image\research_area1.dat"
 input_shp = r'C:\Users\85002\Desktop\TempDIR\out.shp'
 
 FUNC = "Deep_Learning" # Deep_Learning PCA MNF
@@ -77,7 +77,7 @@ if __name__ == '__main__':
         device = torch.device('cuda')
         dataset = DynamicCropDataset(input_img, input_shp, block_size=17)
         dataloader = DataLoader(dataset, shuffle=False, batch_size=24)
-        model = Models.Ete_3D(24, dataset.data_shape)  # 模型实例化
+        model = Models.Ete_3D(dataset.data_shape, out_embedding=embedding_dims)  # 模型实例化
         state_dict = torch.load(model_path, weights_only=True, map_location=device)
         model.load_state_dict(state_dict['model'])
         frame = Contrasive_learning_predict_frame(device=device)
