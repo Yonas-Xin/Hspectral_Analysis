@@ -58,7 +58,7 @@ if __name__ == '__main__':
         scheduler = None
 
     augment = HighDimBatchAugment(spectral_mask_prob=0.5, band_dropout_prob=0)
-    dataloader = DataLoader(dataset, batch_size=batch, shuffle=True, pin_memory=True, num_workers=3,
+    dataloader = DataLoader(dataset, batch_size=batch, shuffle=True, pin_memory=True, num_workers=dataloader_num_workers,
                             persistent_workers=MUITITHREADING_MODE, drop_last=True)  # 数据迭代器
 
     frame = Contrastive_Frame(augment=augment, 
