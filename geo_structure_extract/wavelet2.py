@@ -198,7 +198,7 @@ rgb = (1,2,3) # rgb 组合，从1开始。(1,2,3) or 1
 if '__main__' == __name__:
     gt = Gdal_Tool(input_tif)
     image = gt.read_tif_to_image(rgb, stretch=stretch)
-    edges_norm, binary = swt2_multiscale_edge(image, wavelet='bior2.2', level=5, use_modulus_maxima=False)
+    edges_norm, binary = swt2_multiscale_edge(image, wavelet='bior2.2', level=level, use_modulus_maxima=False)
 
     plt.imsave(out_path[0:-4]+'_wavelet.png', edges_norm , cmap='gray')
     plt.imsave(out_path[0:-4]+'_binary.png', binary , cmap='gray')
