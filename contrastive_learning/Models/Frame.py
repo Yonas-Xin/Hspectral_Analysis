@@ -35,6 +35,7 @@ class Contrastive_Frame:
             
         self.model_path = os.path.join(self.model_dir, f'{model_save_name}.pth')
         self.model_best_path = os.path.join(self.model_dir, f'{model_save_name}_best.pth')
+        self.model_best_path_pt = os.path.join(self.model_dir, f'{model_save_name}_best_encoder.pt')
         self.log_path = os.path.join(self.model_dir, f'{model_save_name}.log')
         self.tensorboard_dir = os.path.join(self.model_dir , f'tensorboard_logs')
 
@@ -71,6 +72,7 @@ def save_model(frame, model, optimizer, scheduler, epoch=None, avg_loss=None, av
     torch.save(state, frame.model_path)
     if is_best:
         shutil.copyfile(frame.model_path, frame.model_best_path)
+        torch.save(model.encoder_q, frame.model_best_path_pt) # 保存整个模型结构
         print(f"============The best checkpoint saved at epoch {epoch}============")
 
 def clean_up(frame):
@@ -147,6 +149,7 @@ def train(frame, model, optimizer, dataloader, scheduler=None, ck_pth=None, clea
                 if (i+1) % interval_printinfo == 0:
                     Epoch_wirter.display(i+1)
 
+            dataloader.dataset.reset()
             current_lr = optimizer.param_groups[0]['lr']
             epoch_summary = Epoch_wirter.epoch_summary(epoch, f"Lr:{current_lr:.2e}")
             log_writer.write(epoch_summary + '\n') # 记录训练过程
@@ -214,8 +217,8 @@ class Contrasive_learning_predict_frame:
             model.eval()
             idx = 0
             for image in tqdm(dataloader, total=len(dataloader)):
-                image = image.unsqueeze(1).to(self.device)
-                predict = model.predict(image)
+                image = image.to(self.device)
+                predict = model(image)
                 if self.out_embedding is None:
                     # 初始化输出嵌入矩阵，预分配内存
                     embedding_nums = predict.shape[-1]

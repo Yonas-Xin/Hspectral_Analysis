@@ -26,7 +26,9 @@ def read_tif_with_gdal(tif_path):
 
 class Contrastive_Dataset(Dataset):
     '''输入一个list文件, list元素代表数据地址'''
-    def __init__(self, data_list, transform=None):
+    def __init__(self, data_list,  
+                 patch_size = None,
+                 multith_mode = False):
         """
         将列表划分为数据集,[batch, 1, H, w, bands]
         """
@@ -48,6 +50,9 @@ class Contrastive_Dataset(Dataset):
             image = image.squeeze() # (bands,)
         image = torch.from_numpy(image).float()
         return image
+    
+    def reset(self):
+        pass
 
 # class Dataset_3D_H5(Dataset):
 #     def __init__(self, h5_file):
@@ -83,11 +88,11 @@ class DynamicCropDataset(Dataset):
         fill_value (int/float): 边缘填充值
     """
     
-    def __init__(self, image_path, point_shp, block_size=30, 
+    def __init__(self, image_path, point_shp, patch_size=30, 
                  transform=None, fill_value=0):
         self.image_path = image_path
         self.point_shp = point_shp
-        self.block_size = block_size
+        self.patch_size = patch_size
         self.transform = transform
         self.fill_value = fill_value
         
@@ -168,11 +173,11 @@ class DynamicCropDataset(Dataset):
         x, y = self.point_coords[idx]
         
         # 计算裁剪窗口
-        if self.block_size % 2 == 0:
-            left_top = self.block_size // 2 - 1
-            right_bottom = self.block_size // 2
+        if self.patch_size % 2 == 0:
+            left_top = self.patch_size // 2 - 1
+            right_bottom = self.patch_size // 2
         else:
-            left_top = right_bottom = self.block_size // 2
+            left_top = right_bottom = self.patch_size // 2
             
         x_start = x - left_top
         y_start = y - left_top
@@ -187,10 +192,10 @@ class DynamicCropDataset(Dataset):
         
         # 创建填充数组
         if self.im_bands > 1:
-            block = np.full((self.im_bands, self.block_size, self.block_size), 
+            block = np.full((self.im_bands, self.patch_size, self.patch_size), 
                            self.fill_value, dtype=np.float32)
         else:
-            block = np.full((self.block_size, self.block_size), 
+            block = np.full((self.patch_size, self.patch_size), 
                           self.fill_value, dtype=np.float32)
         
         # 读取并填充有效数据
@@ -212,7 +217,7 @@ class DynamicCropDataset(Dataset):
         
         # 转换为torch张量
         block = torch.from_numpy(block)
-        if self.block_size == 1:
+        if self.patch_size == 1:
             block = block.squeeze()
         
         # 应用数据增强
@@ -230,19 +235,25 @@ class DynamicCropDataset(Dataset):
 
 class Im_info(object):
     """用于计算影像掩膜, 记录影像信息"""
-    def __init__(self, image_path):
+    def __init__(self, image_path, multith_mode=False):
         self.image_path = image_path
-        self.dataset = gdal.Open(image_path, gdal.GA_ReadOnly)
-        band = self.dataset.GetRasterBand(1)
+        dataset = gdal.OpenShared(image_path, gdal.GA_ReadOnly)
+        band = dataset.GetRasterBand(1)
         self.no_data = band.GetNoDataValue()
-        self.rows, self.cols = self.dataset.RasterYSize, self.dataset.RasterXSize
-        self.backward_mask = self.ignore_backward()
-        self.im_width = self.dataset.RasterXSize # 影像宽, W
-        self.im_height = self.dataset.RasterYSize # 影像高, H
-        self.im_bands = self.dataset.RasterCount # 波段数
+        self.rows, self.cols = dataset.RasterYSize, dataset.RasterXSize
+        self.backward_mask = self._ignore_backward(image_path)
+        self.im_width = dataset.RasterXSize # 影像宽, W
+        self.im_height = dataset.RasterYSize # 影像高, H
+        self.im_bands = dataset.RasterCount # 波段数
+        dataset = None
+        if multith_mode:
+            self.dataset = image_path
+        else:
+            self.dataset = gdal.Open(image_path, gdal.GA_ReadOnly)
 
-    def ignore_backward(self):
+    def _ignore_backward(self, image_path):
         '''分块计算背景掩膜值, 默认分块大小为512'''
+        dataset = gdal.Open(image_path, gdal.GA_ReadOnly)
         block_size = 512
         if self.cols> (2 * block_size) and self.rows > (2 * block_size):
             pass
@@ -255,9 +266,10 @@ class Im_info(object):
                 actual_rows = min(block_size, self.rows - i)
                 actual_cols = min(block_size, self.cols - j)
                 # 读取当前块的所有波段数据(形状: [bands, actual_rows, actual_cols])
-                block_data = self.dataset.ReadAsArray(xoff=j, yoff=i, xsize=actual_cols, ysize=actual_rows)
+                block_data = dataset.ReadAsArray(xoff=j, yoff=i, xsize=actual_cols, ysize=actual_rows)
                 block_mask = np.all(block_data == self.no_data, axis=0)
                 mask[i:i + actual_rows, j:j + actual_cols] = ~block_mask
+        dataset = None
         return mask
     
     def __del__(self):
@@ -267,10 +279,11 @@ class Im_info(object):
 
 class MultiImageRandomBlockSampler(object):
     """多图像分块随机裁剪采样器, 用于从多个图像中分区域随机选择图像块"""
-    def __init__(self, image_paths_list, block_size):
+    def __init__(self, image_paths_list, patch_size, multith_mode=False):
         self.image_paths_list = image_paths_list
-        self.im_info_objs = [Im_info(image_path) for image_path in image_paths_list]
-        self.block_size = block_size
+        print('Calculating data area, collecting information...')
+        self.im_info_objs = [Im_info(image_path, multith_mode) for image_path in image_paths_list]
+        self.patch_size = patch_size
         self.idx_list = [] # [(Im_info: np.array([0,2,3,...])),...]
         self.out_list = [] # [(Im_info: 1), (Im_info: 98)...]
         self.iters = 0
@@ -280,7 +293,7 @@ class MultiImageRandomBlockSampler(object):
     
     def cal_area(self):
         """计算每个数据的分块区域"""
-        image_block = self.block_size
+        image_block = self.patch_size
         for obj in self.im_info_objs:
             mask = obj.backward_mask
             nums = mask.size
@@ -308,12 +321,14 @@ class MIRBS_Dataset(Dataset):
     加载数据更快, 比多进程更快)。不适用多进程, 应该也不适用分布式训练, 如有需要, 做一些适当的修改即可"""
     def __init__(self, 
                  image_paths_list, # 图像路径列表
-                 block_size):
-        self.MIRBS = MultiImageRandomBlockSampler(image_paths_list, block_size)
-        self.block_size = block_size
-        self.left_top = int(block_size / 2 - 1) if block_size % 2 == 0 else int(block_size // 2)
-        self.right_bottom = int(block_size / 2) if block_size % 2 == 0 else int(block_size // 2)
+                 patch_size,
+                 multith_mode = False):
+        self.MIRBS = MultiImageRandomBlockSampler(image_paths_list, patch_size, multith_mode=multith_mode)
+        self.patch_size = patch_size
+        self.left_top = int(patch_size / 2 - 1) if patch_size % 2 == 0 else int(patch_size // 2)
+        self.right_bottom = int(patch_size / 2) if patch_size % 2 == 0 else int(patch_size // 2)
         self.list = self.MIRBS.out_list
+        self.multith_mode = multith_mode
         image = self.__getitem__(0)
         self.data_shape = image.shape
     
@@ -329,7 +344,10 @@ class MIRBS_Dataset(Dataset):
         im_width = obj.im_width
         im_height = obj.im_height
         im_bands = obj.im_bands
-        dataset = obj.dataset # 预先读取的gdal数据集, 如果要实现多进程, 这里修改为dataset = gdal.Open(obj.image_path)并删掉obj的dataset属性
+        if self.multith_mode:
+            dataset = gdal.OpenShared(obj.image_path)
+        else:
+            dataset = obj.dataset # 预先读取的gdal数据集, 如果要实现多进程, 这里修改为dataset = gdal.Open(obj.image_path)并删掉obj的dataset属性
         row = index // im_width # 计算行索引
         col = index % im_width # 计算列索引
 
@@ -346,7 +364,7 @@ class MIRBS_Dataset(Dataset):
         read_height = min(row_end, im_height) - read_row
         
         # 创建并填充数组
-        block = np.full((im_bands, self.block_size, self.block_size), 
+        block = np.full((im_bands, self.patch_size, self.patch_size), 
                            0, dtype=np.float32)
         if read_width > 0 and read_height > 0:
             data = dataset.ReadAsArray(read_col, read_row, read_width, read_height)
@@ -356,6 +374,6 @@ class MIRBS_Dataset(Dataset):
             offset_y = read_row - row_start
             block[:, offset_y:offset_y+read_height, offset_x:offset_x+read_width] = data
         block = torch.from_numpy(block)
-        if self.block_size == 1:
+        if self.patch_size == 1:
             block = block.squeeze()
         return block

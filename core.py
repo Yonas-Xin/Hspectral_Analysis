@@ -189,7 +189,7 @@ class Hyperspectral_Image:
         '''超像素分割'''
         self.image_enhance(f='PCA', n_components=n_components) # 使用PCA增强
         slic_label = superpixel_segmentation(self.enhance_img, n_segments=n_segments, compactness=compactness, mask=self.backward_mask)
-        print(f'超像素数量:{np.max(slic_label)}')
+        print(f'The number of super pixels:{np.max(slic_label)}')
 
         # 生成超像素图像
         slic_img = np.zeros_like(self.enhance_img)
@@ -264,7 +264,7 @@ class Hyperspectral_Image:
             ppi_label_selected[top_indices] = ppi_label[top_indices]  # 只保留top_n个端元
             out_labels[mask] = ppi_label_selected
         out_labels = (out_labels > 0).astype(np.int8)
-        print(f'采样数量：{np.sum(out_labels)}')
+        print(f'The number of samples: {np.sum(out_labels)}')
         return out_labels
 
     # def old_superpixel_sampling(self, n_segments=1024, compactness=10, niters=2000, threshold=0, centered=False,
@@ -339,7 +339,7 @@ class Hyperspectral_Image:
         self.sampling_position[~mask] = 0
         return self.sampling_position
 
-    def crop_image_by_mask_block(self, filepath, image_block=256, block_size=30, position_mask=None, name="Block_"):
+    def crop_image_by_mask_block(self, filepath, image_block=256, patch_size=30, position_mask=None, name="Image_"):
         '''分块裁剪样本，适合无法一次加载到内存的大影像，生成一个txt文件（数据排序按照图像块中点行列顺序排序）
         依据的mask矩阵为sampling_position，后续考虑更换。生成的影像自动转化为float32类型，缩放为0-1范围
         return: None 生成txt文本，生成采样位置矩阵csv文件，生成分块影像数据'''
@@ -350,22 +350,17 @@ class Hyperspectral_Image:
         save_matrix_to_csv(position_mask, os.path.join(filepath, '.sampling_position.csv')) # 保存采样位置矩阵
         geotransform = self.geotransform
         projection = self.projection
-        left_top = int(block_size / 2 - 1) if block_size % 2 == 0 else int(block_size // 2)
-        right_bottom = int(block_size / 2) if block_size % 2 == 0 else int(block_size // 2)
+        left_top = int(patch_size / 2 - 1) if patch_size % 2 == 0 else int(patch_size // 2)
+        right_bottom = int(patch_size / 2) if patch_size % 2 == 0 else int(patch_size // 2)
         num = 1
         pathlist = []
         add_labels = False
         actual_indices = []
-        if np.max(position_mask) > 1:  # 如果大于1说明裁剪的图像有标签
-            print('有标签，将额外生成标签至txt文件')
-            add_labels = True
-        else:
-            print('无标签，生成纯数据地址txt文件')
         for i in range(0, self.rows, image_block):
             for j in range(0, self.cols, image_block):
                 # 计算当前块的实际高度和宽度（避免越界）
-                actual_rows = min(image_block+block_size-1, self.rows - i)#实际高
-                actual_cols = min(image_block+block_size-1, self.cols - j)#实际宽
+                actual_rows = min(image_block+patch_size-1, self.rows - i)#实际高
+                actual_cols = min(image_block+patch_size-1, self.cols - j)#实际宽
                 if (j-left_top)<0:
                     xoff=0
                     actual_cols-=left_top
@@ -416,8 +411,8 @@ class Hyperspectral_Image:
                             oringinX = (col-left_top)*geotransform[1]+oringinx
                             oringinY = (row-left_top)*geotransform[5]+oringiny
                             new_geotransform = (oringinX, geotransform[1], geotransform[2], oringinY, geotransform[4], geotransform[5])
-                            path = os.path.join(filepath, name + f'{block_size}_{block_size}_{num}.tif')
-                            block = block_data[:, row:row + block_size, col:col+block_size]
+                            path = os.path.join(filepath, name + f'{patch_size}_{patch_size}_{num}.tif')
+                            block = block_data[:, row:row + patch_size, col:col+patch_size]
                             write_data_to_tif(path, block, geotransform=new_geotransform, projection=projection)
                             if add_labels:
                                 pathlist.append(path + f' {block_sampling_mask[row, col] - 1}')
@@ -430,7 +425,7 @@ class Hyperspectral_Image:
         sorted_paths = [x[1] for x in paired_sorted]
         dataset_path = os.path.join(filepath, '.datasets.txt')
         write_list_to_txt(sorted_paths, dataset_path) # 打印txt文件
-        print('样本裁剪完成')
+        print('Complete!')
 
     def block_images(self, image_block=256, block_size=30): # 该迭代器用于预测大影像
         """迭代器，返回分块数据和块的左上角坐标"""

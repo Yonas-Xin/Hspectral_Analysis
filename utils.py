@@ -117,10 +117,17 @@ def search_files_in_directory(directory, extension):
         list: 包含所有符合条件的文件路径的列表
     """
     matching_files = []
+    if isinstance(extension, str):
+        extension = (extension,)
+    elif isinstance(extension, tuple):
+        pass
+    else:
+        raise ValueError("The suffix must be a string or a tuple!")
     for root, dirs, files in os.walk(directory):
         for file in files:
-            if file.endswith(extension):
-                matching_files.append(os.path.join(root, file))
+            for ex in extension:
+                if file.endswith(ex):
+                    matching_files.append(os.path.join(root, file))
     return matching_files
 def read_txt_to_list(filename):
     with open(filename, 'r') as file:
