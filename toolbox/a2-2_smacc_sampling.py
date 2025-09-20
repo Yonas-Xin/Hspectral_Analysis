@@ -1,7 +1,6 @@
 """将高光谱影裁剪为多个块，针对每个块使用SMACC"""
 import sys, os
-base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(base_path)
+sys.path.append('.')
 from core import Hyperspectral_Image, mnf_standard
 import numpy as np
 from algorithms import smacc_gpu, noise_estimation

@@ -4,8 +4,7 @@
 """
 
 import sys, os
-base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(base_path)
+sys.path.append('.')
 from cnn_model.Models.Data import CNN_Dataset,read_tif_with_gdal
 from torch.utils.data import DataLoader
 from tqdm import tqdm

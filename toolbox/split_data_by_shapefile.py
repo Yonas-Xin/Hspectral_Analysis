@@ -1,6 +1,5 @@
-import sys, os
-base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(base_path)
+import sys
+sys.path.append('.')
 from gdal_utils import batch_random_split_point_shp
 
 if __name__ == '__main__':

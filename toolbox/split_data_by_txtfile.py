@@ -3,8 +3,7 @@
 """
 
 import sys, os
-base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(base_path)
+sys.path.append('.')
 import random
 import numpy as np
 from utils import read_txt_to_list,write_list_to_txt

@@ -1,7 +1,6 @@
-import sys, os
 import warnings
-base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(base_path)
+import sys, os
+sys.path.append('.')
 import numpy as np
 from core import Hyperspectral_Image, pca
 try:

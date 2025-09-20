@@ -1,6 +1,5 @@
 import pywt
 import numpy as np
-import cv2
 from skimage.filters import threshold_otsu
 from image_stretch import Gdal_Tool
 import matplotlib.pyplot as plt

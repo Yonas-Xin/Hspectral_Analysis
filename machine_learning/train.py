@@ -1,7 +1,6 @@
  # 如果要使用增强数据进行训练与预测，提前将原始影像进行增强后保存
 import sys, os
-base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(base_path)
+sys.path.append('.')
 from core import Hyperspectral_Image
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier

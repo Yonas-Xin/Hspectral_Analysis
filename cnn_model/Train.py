@@ -1,7 +1,6 @@
 """针对Train模块的升级版"""
-import sys, os
-base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(base_path)
+import sys
+sys.path.append('.')
 import torch
 import torch.optim as optim
 from cnn_model.Models.Models import SRACN, Common_1DCNN, Common_3DCNN, SSRN, HybridSN, Vgg16_net, MobileNetV1, \

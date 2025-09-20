@@ -1,12 +1,5 @@
-import pywt
 import numpy as np
 import cv2
-from skimage.filters import threshold_otsu
-from scipy.ndimage import maximum_filter
-from scipy.ndimage import label, binary_fill_holes
-from skimage.morphology import remove_small_objects
-from skimage.measure import label, regionprops
-from skimage.morphology import remove_small_holes
 
 input = r'c:\Users\85002\Desktop\TempDIR\test2\binary_use_smallhole.tif'
 out_path = r'c:\Users\85002\Desktop\TempDIR\test2\binary_use_erode.tif'

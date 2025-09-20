@@ -3,8 +3,7 @@
 """
 
 import sys, os
-base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(base_path)
+sys.path.append('.')
 import numpy as np
 import matplotlib
 import numpy as np

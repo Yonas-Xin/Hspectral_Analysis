@@ -1,6 +1,5 @@
 import sys, os
-base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(base_path)
+sys.path.append('.')
 from contrastive_learning.Models.Frame import Contrastive_Frame, train
 from contrastive_learning.Models.Data import Contrastive_Dataset, MIRBS_Dataset
 from torch.utils.data import DataLoader

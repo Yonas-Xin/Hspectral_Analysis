@@ -1,7 +1,6 @@
 """将输入数据进行标准化并存储为tif文件，供机器学习使用"""
-import sys, os
-base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(base_path)
+import sys
+sys.path.append('.')
 from core import Hyperspectral_Image
 from sklearn.preprocessing import StandardScaler
 import numpy as np

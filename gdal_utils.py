@@ -637,7 +637,7 @@ def clip_by_multishp(out_dir, sr_img, point_shp_dir, block_size=30, out_tif_name
         raise RuntimeError(f'Invalid point_shp_dir: {point_shp_dir}, it should be a directory or a shapefile path')
     
 
-def batch_raster_to_vector(tif_dir, shp_img_path, extension='.txt', dict=None, delete_value=0, if_smooth=False):
+def batch_raster_to_vector(tif_dir, shp_img_path, extension='.tif', dict=None, delete_value=0, if_smooth=False):
     """
     批量栅格转矢量, code by why
     :param tif_dir: 输入的需要处理的栅格文件夹

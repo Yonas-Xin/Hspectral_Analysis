@@ -1,8 +1,7 @@
 """将大幅高光谱影像进行分块的滑窗预测，避免占用大量显存
 预测结果是一个二维矩阵，-1代表背景, 其余值代表预测的地物类别"""
 import sys, os
-base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(base_path)
+sys.path.append('.')
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 import utils

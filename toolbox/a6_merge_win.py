@@ -1,5 +1,5 @@
-import os
-import sys
+import sys, os
+sys.path.append('.')
 from datetime import datetime
 from osgeo import ogr,gdal
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout,

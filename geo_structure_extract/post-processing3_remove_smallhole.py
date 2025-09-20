@@ -1,6 +1,5 @@
 
 import numpy as np
-import cv2
 from skimage.morphology import remove_small_holes
 from image_stretch import Gdal_Tool
 import matplotlib.pyplot as plt

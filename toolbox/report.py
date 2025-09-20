@@ -4,8 +4,7 @@
 
 
 import sys, os
-base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(base_path)
+sys.path.append('.')
 import torch
 from cnn_model.Models.Data import CNN_Dataset
 from utils import read_dataset_from_txt
