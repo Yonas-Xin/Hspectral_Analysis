@@ -1,5 +1,6 @@
 import os
 import sys
+from matplotlib.pylab import f
 import torch.nn as nn
 import numpy as np
 from datetime import datetime
@@ -40,13 +41,15 @@ class Cnn_Model_Frame:
         self.log_path = os.path.join(self.model_dir, f'{model_save_name}.log')
         self.tensorboard_dir = os.path.join(self.model_dir , f'tensorboard_logs')
 
-        #配置训练信息
+        # 配置训练信息、用于断点训练
         self.if_full_cpu = if_full_cpu
         self.test_epoch_min_loss = 100
         self.test_epoch_max_acc = -1
         self.start_epoch = 0
-    
 
+        # 存储最佳模型的预测结果
+        self.best_all_labels = None
+        self.best_all_preds = None
     def full_cpu(self):
         cpu_num = cpu_count()  # 自动获取最大核心数目
         os.environ['OMP_NUM_THREADS'] = str(cpu_num)
@@ -109,8 +112,9 @@ def train(frame, model, optimizer, train_dataloader, eval_dataloader=None, sched
         best_result = f'{formatted_time} Model saved at Epoch {model_save_epoch}. The best training_acc:{best_train_accuracy:.4f}%. The best testing_acc:{best_test_accuracy:.4f}%.'
         log_writer.write(best_result + '\n')
         print(best_result)
-        if eval_dataloader is not None:
-            print_result_report(frame=frame, model=model, ck_pth=frame.model_best_path, eval_dataloader=eval_dataloader, log_writer=log_writer) # 训练完成打印报告
+        print_report(frame.best_all_labels.tolist(), frame.best_all_preds.tolist(), log_writer=log_writer)
+        # if eval_dataloader is not None:
+        #     print_result_report(frame=frame, model=model, ck_pth=frame.model_best_path, eval_dataloader=eval_dataloader, log_writer=log_writer) # 训练完成打印报告
     log_writer = open(frame.log_path, 'w')
     if not os.path.exists(frame.tensorboard_dir):
         os.makedirs(frame.tensorboard_dir)
@@ -147,16 +151,23 @@ def train(frame, model, optimizer, train_dataloader, eval_dataloader=None, sched
                 optimizer.step()
 
             if eval_dataloader is not None:
+                all_labels = np.empty((len(eval_dataloader.dataset),), dtype=np.int16)
+                all_preds = np.empty((len(eval_dataloader.dataset),), dtype=np.int16)
+                idx = 0
                 model.eval()
                 with torch.no_grad():
                     for data, label in tqdm(eval_dataloader, desc='Testing ', total=len(eval_dataloader), leave=True):
                         batchs = data.size(0)
                         data, label = data.to(frame.device), label.to(frame.device)
                         output = model(data)
+                        _, preds = torch.max(output, 1)
+                        all_labels[idx:idx+batchs] = label.cpu().numpy()
+                        all_preds[idx:idx+batchs] = preds.cpu().numpy()
                         loss = frame.loss_func(output, label)
                         acc = topk_accuracy(output, label)
                         test_loss_note.update(loss.item(), batchs)
                         test_acc_note.update(acc[0].item(), batchs)
+                        idx += batchs
 
             test_accuracy = test_acc_note.avg
             test_avg_loss = test_loss_note.avg
@@ -184,6 +195,8 @@ def train(frame, model, optimizer, train_dataloader, eval_dataloader=None, sched
             if test_accuracy > frame.test_epoch_max_acc: # 使用测试集的预测准确率进行模型保存
                 frame.test_epoch_min_loss = test_avg_loss
                 frame.test_epoch_max_acc = test_accuracy
+                frame.best_all_labels = all_labels
+                frame.best_all_preds = all_preds
                 best_train_accuracy = train_accuracy
                 best_test_accuracy = test_accuracy
                 model_save_epoch = epoch
@@ -192,6 +205,8 @@ def train(frame, model, optimizer, train_dataloader, eval_dataloader=None, sched
                 if test_avg_loss < frame.test_epoch_min_loss:
                     frame.test_epoch_min_loss = test_avg_loss
                     frame.test_epoch_max_acc = test_accuracy
+                    frame.best_all_labels = all_labels
+                    frame.best_all_preds = all_preds
                     best_train_accuracy = train_accuracy
                     best_test_accuracy = test_accuracy
                     model_save_epoch = epoch
@@ -215,33 +230,19 @@ def train(frame, model, optimizer, train_dataloader, eval_dataloader=None, sched
         log_writer.close() # 再次确保日志文件被正确关闭
         tensor_writer.close()
         sys.exit(0)
-    
-def print_result_report(frame, model, ck_pth, eval_dataloader, log_writer):
-    eval_dataloader = DataLoader( # 重新建立一个迭代器
-        eval_dataloader.dataset,
-        batch_size=eval_dataloader.batch_size,
-        shuffle=False,
-        num_workers=0
-    )
-    checkpoint = torch.load(ck_pth, weights_only=True, map_location=frame.device)
-    model.load_state_dict(checkpoint['model']) # 从保存的最佳模型中加载参数
-    model.eval()
-    all_labels = []
-    all_preds = []
-    with torch.no_grad():
-        for data, label in tqdm(eval_dataloader, desc='Generating Report', total=len(eval_dataloader)):
-            data, label = data.to(frame.device), label.to(frame.device)
-            output = model(data)
-            _, preds = torch.max(output, 1)
-            all_labels.extend(label.cpu().numpy())
-            all_preds.extend(preds.cpu().numpy())
 
-        accuracy = accuracy_score(all_labels, all_preds)
-        clf_report = classification_report(all_labels, all_preds, digits=4)
-        conf_matrix = confusion_matrix(all_labels, all_preds)
-        kappa = cohen_kappa_score(all_labels, all_preds)
+def print_report(all_labels, all_preds, log_writer=None):
+    accuracy = accuracy_score(all_labels, all_preds)
+    clf_report = classification_report(all_labels, all_preds, digits=4)
+    conf_matrix = confusion_matrix(all_labels, all_preds)
+    kappa = cohen_kappa_score(all_labels, all_preds)
 
-        formatted_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    formatted_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"\n\n{formatted_time} Test Accuracy: {accuracy:.6f}. Cohen's Kappa: {kappa:.4f}")
+    print("Classification Report:\n", clf_report)
+    print("Confusion Matrix:\n", conf_matrix)
+
+    if log_writer is not None:
         log_writer.write(f"\n\n{formatted_time} Test_acc: {accuracy:.4f}. Cohen's Kappa: {kappa:.4f}\n")
         log_writer.write(f"Classification Report:\n")
         log_writer.write(clf_report + "\n")
@@ -250,6 +251,40 @@ def print_result_report(frame, model, ck_pth, eval_dataloader, log_writer):
         log_writer.write('\n')
         log_writer.flush()
 
-        print(f"{formatted_time} Test Accuracy: {accuracy:.6f}. Cohen's Kappa: {kappa:.4f}")
-        print("Classification Report:\n", clf_report)
-        print("Confusion Matrix:\n", conf_matrix)
+# def print_result_report(frame, model, ck_pth, eval_dataloader, log_writer):
+#     eval_dataloader = DataLoader( # 重新建立一个迭代器
+#         eval_dataloader.dataset,
+#         batch_size=eval_dataloader.batch_size,
+#         shuffle=False,
+#         num_workers=0
+#     )
+#     checkpoint = torch.load(ck_pth, weights_only=True, map_location=frame.device)
+#     model.load_state_dict(checkpoint['model']) # 从保存的最佳模型中加载参数
+#     model.eval()
+#     all_labels = []
+#     all_preds = []
+#     with torch.no_grad():
+#         for data, label in tqdm(eval_dataloader, desc='Generating Report', total=len(eval_dataloader)):
+#             data, label = data.to(frame.device), label.to(frame.device)
+#             output = model(data)
+#             _, preds = torch.max(output, 1)
+#             all_labels.extend(label.cpu().numpy())
+#             all_preds.extend(preds.cpu().numpy())
+
+#         accuracy = accuracy_score(all_labels, all_preds)
+#         clf_report = classification_report(all_labels, all_preds, digits=4)
+#         conf_matrix = confusion_matrix(all_labels, all_preds)
+#         kappa = cohen_kappa_score(all_labels, all_preds)
+
+#         formatted_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+#         log_writer.write(f"\n\n{formatted_time} Test_acc: {accuracy:.4f}. Cohen's Kappa: {kappa:.4f}\n")
+#         log_writer.write(f"Classification Report:\n")
+#         log_writer.write(clf_report + "\n")
+#         log_writer.write("Confusion Matrix:\n")
+#         log_writer.write(np.array2string(conf_matrix, separator=', '))
+#         log_writer.write('\n')
+#         log_writer.flush()
+
+#         print(f"{formatted_time} Test Accuracy: {accuracy:.6f}. Cohen's Kappa: {kappa:.4f}")
+#         print("Classification Report:\n", clf_report)
+#         print("Confusion Matrix:\n", conf_matrix)
