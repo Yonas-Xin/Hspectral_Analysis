@@ -90,7 +90,7 @@ def crop_image(padded_image, padding_info, factor=1):
     
     return cropped_image
 
-def swt2_multiscale_edge(img, wavelet='haar', level=3, use_modulus_maxima=False, if_fusion=False):
+def swt2_multiscale_edge(img, wavelet='haar', level=3, use_modulus_maxima=False):
     """
     基于SWT2的多层边缘检测
     img: 输入灰度图（numpy array）
@@ -98,107 +98,112 @@ def swt2_multiscale_edge(img, wavelet='haar', level=3, use_modulus_maxima=False,
     level: 分解层数
     use_modulus_maxima: 是否启用模极大值检测
     """
-    print(f"原始影像数据形状：{img.shape}")
     img = img.astype(np.float32)
     img, info = pad_image_for_swt2(img, level=level)
-    print(info)
     
     # 多层分解
     coeffs = pywt.swt2(img, wavelet=wavelet, level=level)
     
-    if if_fusion:
-        # 用平方和累积所有尺度的高频信息
-        edge_sum = np.zeros_like(img, dtype=np.float32)
-        for cA, (cH, cV, cD) in coeffs:
-            if use_modulus_maxima:
-                # 模极大值检测
-                M = np.sqrt(cH**2 + cV**2)  # 模
-                theta = np.arctan2(cV, cH)  # 方向
-                M_suppressed = non_max_suppression(M, theta)
-                edge_sum += M_suppressed**2
-            else:
-                edge_sum += cH**2 + cV**2 + cD**2
+    # 直接提取最大尺度的系数（coeffs[0]）
+    _, (cH_max, cV_max, cD_max) = coeffs[0]  # 最大尺度的高频分量
+
+    if use_modulus_maxima:
+        # 模极大值检测（仅对最大尺度）
+        M = np.sqrt(cH_max**2 + cV_max**2)  # 模
+        theta = np.arctan2(cV_max, cH_max)  # 方向
+        edges = calculate_modulus_maxima(M, theta)  # 非极大值抑制
     else:
-        # 直接提取最大尺度的系数（coeffs[0]）
-        _, (cH_max, cV_max, cD_max) = coeffs[0]  # 最大尺度的高频分量
+        # 直接合并最大尺度的高频信息（H+V+D）
+        edges = np.sqrt(cH_max**2 + cV_max**2)
 
-        if use_modulus_maxima:
-            # 模极大值检测（仅对最大尺度）
-            M = np.sqrt(cH_max**2 + cV_max**2)  # 模
-            theta = np.arctan2(cV_max, cH_max)  # 方向
-            edge_sum = non_max_suppression(M, theta)  # 非极大值抑制
-        else:
-            # 直接合并最大尺度的高频信息（H+V+D）
-            edge_sum = np.sqrt(cH_max**2 + cV_max**2 + cD_max**2)
-
-    # 得到增强边缘图
-    edges = np.sqrt(edge_sum)
     edges = crop_image(edges, info, factor=1)
-    edges_norm = (edges - edges.min()) / (edges.max() - edges.min())
-    print(f"边缘增强影像数据形状：{edges_norm.shape}")
+    # edges_norm = (edges - edges.min()) / (edges.max() - edges.min()) # 拉伸显示边缘增强图像
 
     # Otsu 阈值分割
     thresh = threshold_otsu(edges)
     binary = (edges >= thresh).astype(np.uint8)
 
-    return edges_norm, binary
+    return binary
 
-def non_max_suppression(M, theta):
+def calculate_modulus_maxima(modulus, angle):
     """
-    模极大值的方向非极大值抑制
-    M: 模
-    theta: 梯度方向（弧度）
+    code form: https://github.com/tdextrous/edge-detection-wavelets/blob/master/wtmm.m
+    Compute modulus maxima for a given modulus and angle matrix.
+    :param modulus: 2D numpy array
+    :param angle: 2D numpy array of the same shape as modulus
+    :return: 2D numpy array of modulus maxima
     """
-    # 转换为角度 0~180
-    angle = np.rad2deg(theta) % 180
+    sz1, sz2 = modulus.shape
+    modulus_maxima = np.zeros((sz1, sz2))
+    pi = np.pi
 
-    Z = np.zeros_like(M, dtype=np.float32)
-    rows, cols = M.shape
+    for i in range(sz2):
+        for j in range(sz1):
+            curr_mod = modulus[j, i]
+            curr_angle = angle[j, i]
 
-    for i in range(1, rows-1):
-        for j in range(1, cols-1):
-            try:
-                q = 255
-                r = 255
+            # Initialize neighbor indices
+            l_neighbor_index = [None, None]
+            r_neighbor_index = [None, None]
 
-                # 水平
-                if (0 <= angle[i, j] < 22.5) or (157.5 <= angle[i, j] <= 180):
-                    q = M[i, j+1]
-                    r = M[i, j-1]
-                # -45°方向
-                elif (22.5 <= angle[i, j] < 67.5):
-                    q = M[i+1, j-1]
-                    r = M[i-1, j+1]
-                # 垂直方向
-                elif (67.5 <= angle[i, j] < 112.5):
-                    q = M[i+1, j]
-                    r = M[i-1, j]
-                # 45°方向
-                elif (112.5 <= angle[i, j] < 157.5):
-                    q = M[i-1, j-1]
-                    r = M[i+1, j+1]
+            # Determine modulus neighbors indices along angle
+            if (0 <= curr_angle < (pi/8)) or \
+               ((7*pi/8) <= curr_angle < (9*pi/8)) or \
+               ((15*pi/8) <= curr_angle < (2*pi)):
+                l_neighbor_index = [j, i-1]
+                r_neighbor_index = [j, i+1]
 
-                if (M[i, j] >= q) and (M[i, j] >= r):
-                    Z[i, j] = M[i, j]
-                else:
-                    Z[i, j] = 0
+            elif ((pi/8) <= curr_angle < (3*pi/8)) or \
+                 ((9*pi/8) <= curr_angle < (11*pi/8)):
+                l_neighbor_index = [j+1, i-1]
+                r_neighbor_index = [j-1, i+1]
 
-            except IndexError:
-                pass
+            elif ((3*pi/8) <= curr_angle < (5*pi/8)) or \
+                 ((11*pi/8) <= curr_angle < (13*pi/8)):
+                l_neighbor_index = [j+1, i]
+                r_neighbor_index = [j-1, i]
 
-    return Z
+            elif ((5*pi/8) <= curr_angle < (7*pi/8)) or \
+                 ((13*pi/8) <= curr_angle < (15*pi/8)):
+                l_neighbor_index = [j-1, i-1]
+                r_neighbor_index = [j+1, i+1]
 
-input_tif = r'C:\Users\85002\Desktop\TempDIR\out.dat'
-out_path = r'c:\Users\85002\Desktop\TempDIR\test2\binary_use.tif'
+            # If indices are nondegenerate, compare against curr_mod
+            is_maxima = True
+
+            # Check left neighbor
+            if l_neighbor_index[0] is not None and l_neighbor_index[1] is not None:
+                if (0 <= l_neighbor_index[0] < sz1) and (0 <= l_neighbor_index[1] < sz2):
+                    l_neighbor = modulus[l_neighbor_index[0], l_neighbor_index[1]]
+                    if l_neighbor > curr_mod:
+                        is_maxima = False
+
+            # Check right neighbor
+            if r_neighbor_index[0] is not None and r_neighbor_index[1] is not None:
+                if (0 <= r_neighbor_index[0] < sz1) and (0 <= r_neighbor_index[1] < sz2):
+                    r_neighbor = modulus[r_neighbor_index[0], r_neighbor_index[1]]
+                    if r_neighbor > curr_mod:
+                        is_maxima = False
+
+            # Add value if good
+            if is_maxima:
+                modulus_maxima[j, i] = curr_mod
+
+    return modulus_maxima
+
+
+input_tif = r'C:\Users\85002\Desktop\TempDIR\out2.dat'
+out_path = r'c:\Users\85002\Desktop\TempDIR\wavelet5.tif'
 level = 5
+use_modulus_maxima = True # 是否启用模极大值检测
 
+wavelet = 'haar' # haar, db1, db2, sym2, coif1，bior2.2
 stretch = "Linear_2%" # Linear_2% or Linear
 rgb = (1,2,3) # rgb 组合，从1开始。(1,2,3) or 1
 if '__main__' == __name__:
     gt = Gdal_Tool(input_tif)
     image = gt.read_tif_to_image(rgb, stretch=stretch)
-    edges_norm, binary = swt2_multiscale_edge(image, wavelet='bior2.2', level=level, use_modulus_maxima=False)
+    binary = swt2_multiscale_edge(image, wavelet='haar', level=level, use_modulus_maxima=use_modulus_maxima)
 
-    plt.imsave(out_path[0:-4]+'_wavelet.png', edges_norm , cmap='gray')
     plt.imsave(out_path[0:-4]+'_binary.png', binary , cmap='gray')
     gt.save_tif(out_path, binary)

@@ -36,7 +36,8 @@ class Gdal_Tool(object):
         dataset = None
 
     def read_tif_to_image(self, band, stretch = "Linear", to_gray = True, to_int = True):
-        """stretch: Linear or Linear_2%"""
+        """stretch: Linear or Linear_2%
+        image: np.ndarray, [rows, cols] or [rows, cols, 3], float32 (0~1) or uint8 (0~255)"""
         if stretch == "Linear":
             stretch_func = linear_stretch
         elif stretch == "Linear_2%":
@@ -90,6 +91,8 @@ class Gdal_Tool(object):
                 gt[1] *= factor  # 像元宽度
                 gt[5] *= factor  # 像元高度
                 geotransform = tuple(gt)
+            else:
+                geotransform = self.geotransform
             dataset.SetGeoTransform(geotransform)
             dataset.SetProjection(self.projection)
         # 写入数据
@@ -100,6 +103,27 @@ class Gdal_Tool(object):
         dataset.FlushCache()
         dataset = None
         return out_path
+    
+    def down_sample(self, image, factor, FUNC="NEAREST"): # 对图像进行降采样，建议输入为经过拉伸后的图像
+        """
+        image: np.ndarray, [rows, cols] or [rows, cols, 3]
+        Func: "LINEAR", "CUBIC", "NEAREST"
+        """
+        rows, cols = image.shape[:2]
+        scale_factor = 1/factor
+
+        new_rows = int(rows * scale_factor)
+        new_cols = int(cols * scale_factor)
+        if FUNC == "LINEAR":
+            resampled = cv2.resize(image, (new_cols, new_rows), interpolation=cv2.INTER_LINEAR)
+            return resampled
+        elif FUNC == "CUBIC":
+            resampled = cv2.resize(image, (new_cols, new_rows), interpolation=cv2.INTER_CUBIC)
+            return resampled
+        else: # NEAREST
+            resampled = cv2.resize(image, (new_cols, new_rows), interpolation=cv2.INTER_NEAREST)
+        return resampled
+
     
     def skeleton_to_shp_from_raster(self, binary_img, shp_path):
         """
