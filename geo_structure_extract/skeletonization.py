@@ -3,7 +3,7 @@ import numpy as np
 from skimage.morphology import skeletonize, label
 from scipy import ndimage as ndi
 from image_stretch import Gdal_Tool
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 def skeletonize_and_prune(binary_img, min_branch_length=30):
     """
     二值图骨架化并去掉短分支
@@ -123,5 +123,5 @@ if __name__ == "__main__":
     gt = Gdal_Tool(input)
     img = gt.read_tif_to_image(rgb, to_int=True)
     binary = skeletonize_and_prune(binary_img=img, min_branch_length=min_branch_length)
-    plt.imsave(out_path[:-4]+'.png', binary , cmap='gray')
+    # plt.imsave(out_path[:-4]+'.png', binary , cmap='gray')
     gt.skeleton_to_shp_from_raster(binary, out_path)

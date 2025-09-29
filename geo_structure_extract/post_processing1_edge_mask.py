@@ -1,6 +1,6 @@
 import numpy as np
 from image_stretch import Gdal_Tool
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 
 def mask_image(image, mask_info):
     """
@@ -49,5 +49,5 @@ if __name__ == "__main__":
     img = gt.read_tif_to_image(rgb, to_int=False)
     img = mask_image(img, mask_info=mask_info) # 掩膜边界
     img = img.astype(np.float32)
-    plt.imsave(out_path[:-4]+'.png', img , cmap='gray')
+    # plt.imsave(out_path[:-4]+'.png', img , cmap='gray')
     gt.save_tif(out_path, img)

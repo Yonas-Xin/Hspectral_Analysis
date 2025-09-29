@@ -2,7 +2,7 @@ import pywt
 import numpy as np
 from skimage.filters import threshold_otsu
 from image_stretch import Gdal_Tool
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 def pad_image_for_swt2(image, level, pad_value=0):
     """
     对输入图像进行边缘填充，使其尺寸能被 2^level 整除，以满足 pywt.swt2 的要求。
@@ -205,5 +205,5 @@ if '__main__' == __name__:
     image = gt.read_tif_to_image(rgb, stretch=stretch)
     binary = swt2_multiscale_edge(image, wavelet='haar', level=level, use_modulus_maxima=use_modulus_maxima)
 
-    plt.imsave(out_path[0:-4]+'_binary.png', binary , cmap='gray')
+    # plt.imsave(out_path[0:-4]+'_binary.png', binary , cmap='gray')
     gt.save_tif(out_path, binary)

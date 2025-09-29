@@ -1,7 +1,6 @@
 """该文档用于将遥感数据读取为图片格式"""
 import numpy as np
 from osgeo import gdal, ogr, osr
-import matplotlib.pyplot as plt
 import cv2
 gdal.UseExceptions()
 GDAL2NP_TYPE = { # GDAL数据类型与numpy数据类型的映射
@@ -228,5 +227,5 @@ if '__main__' == __name__:
     input1 = r'C:\Users\85002\OneDrive - cugb.edu.cn\项目数据\张川铀资源\ZY_result\Image\whole_area_138.dat'
     gt = Gdal_Tool(input1)
     image = gt.read_tif_to_image(1)
-    plt.imshow(image)
-    plt.show()
+    # plt.imshow(image)
+    # plt.show()

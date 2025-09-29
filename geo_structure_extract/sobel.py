@@ -1,6 +1,6 @@
 import cv2
 from image_stretch import Gdal_Tool
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 
 input_tif = r'C:\Users\85002\Desktop\TempDIR\out2.dat'
 out_path = r'c:\Users\85002\Desktop\TempDIR\test2\binary_sobel_4.tif'
@@ -25,5 +25,5 @@ if '__main__' == __name__:
     result = cv2.addWeighted(Scale_absX, 0.5, Scale_absY, 0.5, 0)  # 图像混合, unit8格式
     result[result > th] = 255
 
-    plt.imsave(out_path[:-4]+'.png', result , cmap='gray')
+    # plt.imsave(out_path[:-4]+'.png', result , cmap='gray')
     gt.save_tif(out_path, result, factor=DOWN_SAMPLE_FACTOR if DOWN_SAMPLE_FACTOR > 1 else None)
