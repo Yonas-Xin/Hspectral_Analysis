@@ -67,8 +67,7 @@ def run_algorithm(algorithm, params):
             "--batch_size", str(params["batch_size"]),
             "--embedding_dims", str(params["embedding_dims"])
         ]
-        if params.get("model_path"):
-            cmd += ["--model_path", params["model_path"]]
+        cmd += ["--model_path", str(params["model_path"])]
 
     elif algorithm == "cluster_features":
         script_path = os.path.abspath("./toolbox_win/function4_c.py")
@@ -93,8 +92,7 @@ def run_algorithm(algorithm, params):
             "--ratio", str(params["ratio"]),
             "--n_splits", str(params["n_splits"])
         ]
-        if params.get("embedding_csv"):
-            cmd += ["--embedding_csv", params["embedding_csv"]]
+        cmd += ["--embedding_csv", str(params["embedding_csv"])]
     
     elif algorithm == "sample_crop":
         script_path = os.path.abspath("./toolbox_win/function6_sc.py")
@@ -736,7 +734,7 @@ class ClusterFeaturesDialog(BaseDialog):
         return {
             "input_tif": self.input_tif.text(),
             "input_shp": self.input_shp.text(),
-            "feature_csv": self.feature_csv.text(),
+            "feature_csv": self.feature_csv.text() if self.feature_csv.text() else None,
             "n_clusters": self.cluster_spin.value(),
             "output_dir": self.out_dir.text(),
             "output_dir_name": self.out_name.text()

@@ -110,7 +110,7 @@ if __name__ == '__main__':
     dd_prediction(
         input_tif=os.path.abspath(args.input_tif),
         input_shp=os.path.abspath(args.input_shp),
-        model_path=os.path.abspath(args.model_path) if args.model_path else None,
+        model_path=None if args.model_path == "None" else os.path.abspath(args.model_path),
         output_csv=os.path.abspath(args.output_csv),
         FUNC=args.FUNC,
         patch_size=args.patch_size,

@@ -397,7 +397,7 @@ if __name__ == '__main__':
         input_tif=os.path.abspath(args.input_tif),
         input_shp_dir=os.path.abspath(args.input_shp_dir),
         data_form=args.data_form,
-        embedding_csv=os.path.abspath(args.embedding_csv) if args.embedding_csv else None,
+        embedding_csv=None if args.embedding_csv == "None" else os.path.abspath(args.embedding_csv),
         FUNC=args.FUNC,
         ratio=args.ratio,
         n_splits=args.n_splits
