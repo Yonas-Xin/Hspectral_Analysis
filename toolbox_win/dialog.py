@@ -16,7 +16,6 @@ def run_algorithm(algorithm, params):
     """
 
     # 根据算法类型组织命令行参数
-    cmd = [sys.executable]  # python 可执行路径
     if algorithm == "random_crop":
         script_path = os.path.abspath("./toolbox_win/function1_rci.py")
         cmd = [
