@@ -1,6 +1,7 @@
 import warnings
 import sys, os
 sys.path.append('.')
+from matplotlib.pylab import f
 import numpy as np
 try:
     from osgeo import gdal,ogr,osr
@@ -12,10 +13,8 @@ import numpy as np
 import os
 from sklearn.mixture import GaussianMixture
 from utils import read_csv_to_matrix
+import argparse
 
-def load_deep_feature(path):
-    dataset = np.load(path)
-    return dataset['data']
 # 使标签顺序与类别特征一致
 def standardize_labels(labels, centroids):
     """按聚类中心大小重新编号标签
@@ -188,19 +187,66 @@ def split_shp_by_labels(input_shp, raster_path, labels, output_dir, output_dir_n
     print('Finish')
     return output_files
 
-input_img = r"C:\Users\85002\OneDrive - cugb.edu.cn\项目数据\张川铀资源\ZY_result\Image\research_area1.dat"
-input_shp = r'C:\Users\85002\Desktop\TempDIR\out.shp'
-embeddings = r'C:\Users\85002\Desktop\TempDIR\embeddings2.csv'
 
-classes = 24
-out_dir = r'c:\Users\85002\Desktop\TempDIR\test3' # 在该文件夹下会新建一个新文件夹保存分类结果
-out_dir_name = 'RESEARCH_GF5' # 新文件夹名
+def cluster_features(input_tif, input_shp, feature_csv, n_clusters, output_dir, output_dir_name=None):
+    """
+    使用高斯混合模型对样本进行聚类并拆分Shapefile
+    
+    参数:
+        input_tif: 参考栅格路径
+        input_shp: 输入点Shapefile路径
+        feature_csv: 样本特征CSV路径
+        n_clusters: 聚类数量
+        output_dir: 输出目录
+        output_dir_name: 输出子目录名称（可选）
+    
+    返回:
+        dict: {label: 输出文件路径}
+    """
+    try:
+        # 读取特征矩阵
+        features = read_csv_to_matrix(feature_csv)
+        if features is None or len(features) == 0:
+            raise ValueError("特征矩阵为空或无法读取")
+        
+        # 训练高斯混合模型
+        gmm = GaussianMixture(n_components=n_clusters, covariance_type='full', random_state=42)
+        gmm.fit(features)
+        
+        # 预测标签
+        raw_labels = gmm.predict(features)
+        
+        # 标准化标签顺序
+        standardized_labels = standardize_labels(raw_labels, gmm.means_)
+        
+        # 拆分Shapefile
+        output_files = split_shp_by_labels(
+            input_shp=input_shp,
+            raster_path=input_tif,
+            labels=standardized_labels,
+            output_dir=output_dir,
+            output_dir_name=output_dir_name
+        )
+        
+        return True, f"聚类并拆分成功，输出文件: {output_files}"
+    except Exception as e:
+        return False, f"聚类失败: {e}"
+
 if __name__ == '__main__':
-    """数据读取，数据增强，样本随机选择"""
-    dataset = read_csv_to_matrix(embeddings) 
-    model = GaussianMixture(n_components=classes, n_init=10)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--input_tif", type=str, required=True)
+    parser.add_argument("--input_shp", type=str, required=True)
+    parser.add_argument("--feature_csv", type=str, required=True)
+    parser.add_argument("--n_clusters", type=int, required=True)
+    parser.add_argument("--output_dir", type=str, required=True)
+    parser.add_argument("--output_dir_name", type=str, default="SAMPLES_DIR")
+    args = parser.parse_args()
 
-    labels = model.fit_predict(dataset)
-    labels = standardize_labels(labels, model.means_) # 对标签进行标准化排序，确保每次聚类结果一致
-
-    split_shp_by_labels(input_shp, input_img, labels,  output_dir=out_dir, output_dir_name=out_dir_name)
+    cluster_features(
+        input_tif=os.path.abspath(args.input_tif),
+        input_shp=os.path.abspath(args.input_shp),
+        feature_csv=os.path.abspath(args.feature_csv),
+        n_clusters=args.n_clusters,
+        output_dir=os.path.abspath(args.output_dir),
+        output_dir_name=args.output_dir_name
+    )

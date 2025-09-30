@@ -7,7 +7,6 @@ from algorithms import smacc_gpu, noise_estimation
 input_tif = r"C:\Users\85002\OneDrive - cugb.edu.cn\项目数据\张川铀资源\ZY_result\Image\research_area1.dat"
 out_path = r'c:\Users\85002\Desktop\TempDIR\gxt\out.shp'
 row, col = 3, 3
-enhance_func = 'MNF' # 可选'MNF'
 embedding_nums = 12 # 降维维度
 samples = 4000 # 采样数量
 if __name__ == '__main__':
@@ -23,7 +22,7 @@ if __name__ == '__main__':
         bands, H, W = input.shape
         input = input.transpose(1,2,0)
         noise = noise_estimation(input)
-        input = mnf_standard(input, noise, 24)
+        input = mnf_standard(input, noise, embedding_nums)
         single_samples = int(samples*(H*W)/(rows*cols))
         S, F, R, mask = smacc_gpu(input, single_samples)
 

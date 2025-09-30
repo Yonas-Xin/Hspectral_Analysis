@@ -1,5 +1,5 @@
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
-                             QLineEdit, QPushButton, QFileDialog,
+                             QLineEdit, QPushButton, QFileDialog, QTextEdit,
                              QSpinBox, QComboBox, QDialogButtonBox,
                              QCheckBox)
 from PyQt5.QtCore import Qt
@@ -10,7 +10,7 @@ class BaseDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.setModal(True)
-        self.resize(400, 300)
+        self.resize(600, 400)
         
     def create_button_layout(self, layout):
         """创建确定和取消按钮布局"""
@@ -44,6 +44,14 @@ class BaseDialog(QDialog):
         out_layout.addWidget(browse_out_btn)
         layout.addLayout(out_layout)
         return out_layout
+
+    def create_label_layout(self, layout, text):
+        self.info_label = QLabel("算法信息：")
+        self.info_text = QTextEdit()
+        self.info_text.setReadOnly(True)
+        self.info_text.setText(text)
+        layout.addWidget(self.info_label)
+        layout.addWidget(self.info_text)
     
     def browse_file(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "选择输入文件", "", "Data Files (*.tif *.dat)")
@@ -58,10 +66,12 @@ class BaseDialog(QDialog):
 
 class Wavelet2Dialog(BaseDialog):
     def __init__(self, parent=None):
-        super().__init__(parent, "构造提取")
+        super().__init__(parent, "二进小波参数设置")
         self.initUI()
     
     def initUI(self):
+        # 总体水平布局：左边参数，右边信息
+        main_layout = QHBoxLayout(self)
         layout = QVBoxLayout()
 
         # 文件路径选择
@@ -110,7 +120,13 @@ class Wavelet2Dialog(BaseDialog):
         # 确认/取消按钮
         self.create_button_layout(layout)
 
-        self.setLayout(layout)
+        info_layout = QVBoxLayout()
+        text = "参数一: 输入影像路径(*tif、*dat)\n参数二: 输出影像路径\n参数三: 小波分解层数\n参数四: 是否启用模极大值检测\n参数五: 小波函数选择\n参数六: 原始影像拉伸方式\n参数七: 影像读取的波段"
+        self.create_label_layout(info_layout, text)
+        main_layout.addLayout(layout, 3)
+        main_layout.addLayout(info_layout, 2)
+        self.setLayout(main_layout)
+
 
     def get_params(self):
         """返回用户输入的参数字典"""
@@ -131,6 +147,7 @@ class CannyDialog(BaseDialog):
         self.initUI()
 
     def initUI(self):
+        main_layout = QHBoxLayout(self)
         layout = QVBoxLayout()
 
         # 文件路径选择
@@ -192,8 +209,12 @@ class CannyDialog(BaseDialog):
 
         # 确认/取消
         self.create_button_layout(layout)
-
-        self.setLayout(layout)
+        info_layout = QVBoxLayout()
+        text = "参数一: 输入影像路径(*tif、*dat)\n参数二: 输出影像路径\n参数三: Canny算子低阈值\n参数四: Canny算子高阈值\n参数五: 降采样方法\n参数六: 降采样倍数\n参数七: 原始影像拉伸方式\n参数八: 影像读取的波段"
+        self.create_label_layout(info_layout, text)
+        main_layout.addLayout(layout, 3)
+        main_layout.addLayout(info_layout, 2)
+        self.setLayout(main_layout)
 
     # ===== 获取参数 =====
     def get_params(self):
@@ -215,6 +236,7 @@ class SobelDialog(BaseDialog):
         self.initUI()
 
     def initUI(self):
+        main_layout = QHBoxLayout(self)
         layout = QVBoxLayout()
 
         # 文件路径选择
@@ -267,8 +289,13 @@ class SobelDialog(BaseDialog):
 
         # 确认/取消按钮
         self.create_button_layout(layout)
+        info_layout = QVBoxLayout()
+        text = "参数一: 输入影像路径(*tif、*dat)\n参数二: 输出影像路径\n参数三: Sobel算子阈值\n参数四: 降采样倍数\n参数五: 降采样方法\n参数六: 原始影像拉伸方式\n参数七: 影像读取的波段"
+        self.create_label_layout(info_layout, text)
+        main_layout.addLayout(layout, 3)
+        main_layout.addLayout(info_layout, 2)
 
-        self.setLayout(layout)
+        self.setLayout(main_layout)
 
     # ===== 获取参数 =====
     def get_params(self):
@@ -289,6 +316,7 @@ class MaskImageDialog(BaseDialog):
         self.initUI()
 
     def initUI(self):
+        main_layout = QHBoxLayout(self)
         layout = QVBoxLayout()
 
         # 输入文件
@@ -310,8 +338,13 @@ class MaskImageDialog(BaseDialog):
 
         # 确认/取消
         self.create_button_layout(layout)
+        info_layout = QVBoxLayout()
+        text = "参数一: 输入影像路径(*tif、*dat)\n参数二: 输出影像路径\n参数三: 上边缘宽度\n参数四: 下边缘宽度\n参数五: 左边缘宽度\n参数六: 右边缘宽度"
+        self.create_label_layout(info_layout, text)
+        main_layout.addLayout(layout, 3)
+        main_layout.addLayout(info_layout, 2)
 
-        self.setLayout(layout)
+        self.setLayout(main_layout)
 
     def get_params(self):
         return {
@@ -330,6 +363,7 @@ class RemoveSmallObjDialog(BaseDialog):
         self.initUI()
 
     def initUI(self):
+        main_layout = QHBoxLayout(self)
         layout = QVBoxLayout()
         # 输入文件
         self.layout_choose_file(layout)
@@ -341,14 +375,19 @@ class RemoveSmallObjDialog(BaseDialog):
         area_layout = QHBoxLayout()
         self.area_spin = QSpinBox()
         self.area_spin.setRange(0, 100000000)
-        self.area_spin.setValue(1000000)
+        self.area_spin.setValue(10000)
         area_layout.addWidget(QLabel("小物体面积阈值:"))
         area_layout.addWidget(self.area_spin)
         layout.addLayout(area_layout)
 
         # 确认/取消
         self.create_button_layout(layout)
-        self.setLayout(layout)
+        info_layout = QVBoxLayout()
+        text = "参数一: 输入影像路径(*tif、*dat)\n参数二: 输出影像路径\n参数三: 小物体面积阈值"
+        self.create_label_layout(info_layout, text)
+        main_layout.addLayout(layout, 3)
+        main_layout.addLayout(info_layout, 2)
+        self.setLayout(main_layout)
 
     def get_params(self):
         return {
@@ -364,6 +403,7 @@ class RemoveSmallHoleDialog(BaseDialog):
         self.initUI()
 
     def initUI(self):
+        main_layout = QHBoxLayout(self)
         layout = QVBoxLayout()
         # 输入文件
         self.layout_choose_file(layout)
@@ -373,13 +413,18 @@ class RemoveSmallHoleDialog(BaseDialog):
         area_layout = QHBoxLayout()
         self.area_spin = QSpinBox()
         self.area_spin.setRange(0, 100000000)
-        self.area_spin.setValue(1000000)
+        self.area_spin.setValue(10000)
         area_layout.addWidget(QLabel("小孔洞面积阈值:"))
         area_layout.addWidget(self.area_spin)
         layout.addLayout(area_layout)
         # 按钮
         self.create_button_layout(layout)
-        self.setLayout(layout)
+        info_layout = QVBoxLayout()
+        text = "参数一: 输入影像路径(*tif、*dat)\n参数二: 输出影像路径\n参数三: 小孔洞面积阈值"
+        self.create_label_layout(info_layout, text)
+        main_layout.addLayout(layout, 3)
+        main_layout.addLayout(info_layout, 2)
+        self.setLayout(main_layout)
 
     def get_params(self):
         return {
@@ -389,12 +434,13 @@ class RemoveSmallHoleDialog(BaseDialog):
         }
     
 class ErodeDilateDialog(BaseDialog):
-    def __init__(self, title="腐蚀操作参数设置", parent=None):
+    def __init__(self, parent=None, title="操作参数设置"):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.initUI()
 
     def initUI(self):
+        main_layout = QHBoxLayout(self)
         layout = QVBoxLayout()
         # 输入文件
         self.layout_choose_file(layout)
@@ -422,7 +468,12 @@ class ErodeDilateDialog(BaseDialog):
         layout.addLayout(iter_layout)
         # 按钮
         self.create_button_layout(layout)
-        self.setLayout(layout)
+        info_layout = QVBoxLayout()
+        text = "参数一: 输入影像路径(*tif、*dat)\n参数二: 输出影像路径\n参数三: 卷积核大小(x,y)\n参数四: 迭代次数"
+        self.create_label_layout(info_layout, text)
+        main_layout.addLayout(layout, 3)
+        main_layout.addLayout(info_layout, 2)
+        self.setLayout(main_layout)
 
     def get_params(self):
         return {
@@ -439,6 +490,7 @@ class SkeletonizeDialog(BaseDialog):
         self.initUI()
 
     def initUI(self):
+        main_layout = QHBoxLayout(self)
         layout = QVBoxLayout()
 
         # 输入文件
@@ -451,15 +503,20 @@ class SkeletonizeDialog(BaseDialog):
         branch_layout = QHBoxLayout()
         self.branch_spin = QSpinBox()
         self.branch_spin.setRange(1, 100000000)
-        self.branch_spin.setValue(1000000)
+        self.branch_spin.setValue(10000)
         branch_layout.addWidget(QLabel("最小分支长度:"))
         branch_layout.addWidget(self.branch_spin)
         layout.addLayout(branch_layout)
 
         # 确认/取消按钮
         self.create_button_layout(layout)
+        info_layout = QVBoxLayout()
+        text = "参数一: 输入影像路径(*tif、*dat)\n参数二: 输出影像路径\n参数三: 保留的最小分支长度"
+        self.create_label_layout(info_layout, text)
+        main_layout.addLayout(layout, 3)
 
-        self.setLayout(layout)
+        main_layout.addLayout(info_layout, 2)
+        self.setLayout(main_layout)
 
     # ===== 获取参数 =====
     def get_params(self):

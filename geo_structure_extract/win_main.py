@@ -172,7 +172,7 @@ class GeoStructure_Win(QMainWindow):
                 self.status_label.setText("处理失败")
 
     def show_erode_dialog(self):
-        dialog = ErodeDilateDialog(self)  # 复用CannyDialog, 可根据
+        dialog = ErodeDilateDialog(self, title="腐蚀操作参数设置")  # 复用CannyDialog, 可根据
         if dialog.exec_():  # 如果用户点击 OK
             params = dialog.get_params()
             result, edges = post_erode_image(**params)  # 解包参数并调用函数
@@ -185,7 +185,7 @@ class GeoStructure_Win(QMainWindow):
                 self.status_label.setText("处理失败")
 
     def show_dilate_dialog(self):
-        dialog = ErodeDilateDialog(self)  # 复用CannyDialog, 可根据
+        dialog = ErodeDilateDialog(self, title="膨胀操作参数设置")  # 复用CannyDialog, 可根据
         if dialog.exec_():  # 如果用户点击 OK
             params = dialog.get_params()
             result, edges = post_dilate_image(**params)  # 解包参数并调用函数
