@@ -62,15 +62,15 @@ class Hyperspectral_Image:
     def create_mask_from_mutivector(self, inputdir): # 多矢量点转mask
         return mutivetor_to_mask(inputdir, self.geotransform, self.rows, self.cols)
     
-    def save_tif(self, filename, img_data, nodata = None):
+    def save_tif(self, filename, img_data, nodata = None, mask=None):
         '''将(rows, cols,  bands)或(rows, cols)的数据存为tif格式, tif具有与img相同的投影信息'''
         nodata = self.no_data if nodata is None else nodata
         if len(img_data.shape) == 3:
             write_data_to_tif(filename, img_data.transpose(2,0,1), self.geotransform, self.projection,
-                          nodata_value=nodata)
+                          nodata_value=nodata, mask=mask)
         elif len(img_data.shape) == 2:
             write_data_to_tif(filename, img_data, self.geotransform, self.projection,
-                nodata_value=nodata)
+                nodata_value=nodata, mask=mask)
         else:
             raise ValueError("The input dims must be 2 or 3")
         return True
@@ -146,7 +146,7 @@ class Hyperspectral_Image:
     def get_dataset(self, scale=1e-4):
         '''return: (bands, rows, cols)的numpy数组，数据类型为float32'''
         dataset = self.dataset.ReadAsArray()
-        if dataset.dtype == np.int16: # 如果是int16类型数据，进行缩放
+        if dataset.dtype == np.int16 and scale != 1: # 如果是int16类型数据并且scale不为1，进行缩放
             dataset = dataset.astype(np.float32) * scale
         return dataset
 
@@ -488,6 +488,18 @@ class Hyperspectral_Image:
                 pixel_data = pixel_data.astype(np.float32) * 1e-4
             data[i, :] = pixel_data
         return data, label
+    
+    def Mianvector2raster(self, input_shp, out_tif, nodata=0, fill_value=255):
+        '''将矢量面转为栅格，矢量内区域设为fill_value，外部区域设为0，处理结果与原始数据大小一致'''
+        mask = Mianvector2mask(self.geotransform, self.projection, width=self.cols, height=self.rows, vector_path=input_shp, fill_value=fill_value)
+        mask = mask.astype(np.uint8)
+        self.save_tif(out_tif, mask, nodata=nodata)
+    
+    def Mianvector_clip_tif(self, input_shp, out_tif, nodata=0, fill_value=1):
+        '''根据面shp文件对影像进行裁剪，矢量内区域保留，外部区域设为nodata，处理结果与原始数据大小一致'''
+        mask = Mianvector2mask(self.geotransform, self.projection, width=self.cols, height=self.rows, vector_path=input_shp, fill_value=fill_value)
+        mask = mask.astype(bool)
+        self.save_tif(out_tif, self.get_dataset(scale=1), nodata=nodata, mask=mask) # 保存裁剪影像，原始数据不缩放
         
 def to_slice(s=None):
     """s:(int, int) or int or None"""

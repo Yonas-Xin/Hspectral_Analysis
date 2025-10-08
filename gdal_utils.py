@@ -30,7 +30,7 @@ NP2GDAL_TYPE = {
     np.dtype('float32'): gdal.GDT_Float32,
     np.dtype('float64'): gdal.GDT_Float64
 }
-def write_data_to_tif(output_file, data, geotransform, projection, nodata_value=nodata_value):
+def write_data_to_tif(output_file, data, geotransform, projection, nodata_value=nodata_value, mask=None):
     """
     将数组数据写入GeoTIFF文件
     
@@ -40,6 +40,7 @@ def write_data_to_tif(output_file, data, geotransform, projection, nodata_value=
         geotransform (tuple): 6参数地理变换
         projection (str): WKT格式的坐标参考系统
         nodata_value (int/float): NoData值, 默认0
+        mask (np.ndarray): 可选的掩码数组, 形状应与data的空间维度匹配, 用于保存有效数据区域，其余区域设为nodata_value
     
     异常:
         IOError: 当文件创建失败时
@@ -58,6 +59,11 @@ def write_data_to_tif(output_file, data, geotransform, projection, nodata_value=
         dtype = NP2GDAL_TYPE[data.dtype]
     except KeyError:
         raise ValueError(f"不支持的数据类型: {data.dtype}. 支持的类型包括: {list(NP2GDAL_TYPE.keys())}")
+    if mask is not None: # 如果提供了掩码, 则将掩码区域外的数据设为nodata_value（默认为0）
+        mask = mask.astype(np.bool)
+        data = data.transpose((1, 2, 0))
+        data[~mask] = nodata_value
+        data = data.transpose((2, 0, 1))
     # 创建文件
     driver = gdal.GetDriverByName("GTiff")
     dataset = driver.Create(output_file, cols, rows, bands, dtype)
@@ -168,6 +174,34 @@ def search_files_in_directory(directory, extension='.txt'):
             if file.endswith(extension):
                 matching_files.append(os.path.join(root, file))
     return matching_files
+
+def Mianvector2mask(geotransform, projection, width, height, vector_path, fill_value=255):
+    """
+    使用GDAL将矢量文件转换为与栅格一致的NumPy矩阵，未覆盖区域填充0
+    :param vector_path: 矢量文件路径（Shapefile）
+    :param attribute: 矢量属性字段名称（默认 'class'）
+    :return: NumPy矩阵 (H, W)
+    """
+    # 2. 打开矢量文件
+    vector_ds = ogr.Open(vector_path)
+    if not vector_ds:
+        raise RuntimeError(f"无法打开矢量文件 {vector_path}")
+
+    layer = vector_ds.GetLayer()
+
+    # 3. 创建一个内存栅格数据集，存储矢量化数据
+    mem_driver = gdal.GetDriverByName("MEM")
+    mem_raster = mem_driver.Create("", width, height, 1, gdal.GDT_Int16)
+    mem_raster.SetGeoTransform(geotransform)  # 设定仿射变换
+    mem_raster.SetProjection(projection)  # 设定投影
+
+    band = mem_raster.GetRasterBand(1)
+    band.Fill(0)  # 未覆盖区域填充 0
+    gdal.RasterizeLayer(mem_raster, [1], layer, burn_values = [fill_value]) # 矢量覆盖区填充1
+    matrix = band.ReadAsArray()
+    vector_ds = None
+    mem_raster = None
+    return matrix
 
 def mask_to_vector_gdal(mask_matrix,geotransform, projection=None, output_shapefile="./Position_mask/test.shp"):
     """
