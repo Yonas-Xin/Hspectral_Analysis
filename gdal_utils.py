@@ -506,7 +506,114 @@ def face_vector_to_mask(shp_path, geotransform, projection, rows, cols, str='cla
     shp_ds = None
     return result
 
-def clip_by_shp(out_dir, sr_img, point_shp, block_size=30, out_tif_name='img', fill_value=0, value=None):
+def clip_by_position(out_dir, sr_img, position_list, patch_size=30, out_tif_name='img', fill_value=0, label=None):
+    """
+    根据掩码矩阵从影像中裁剪指定大小的图像块
+    
+    参数:
+        out_dir (str): 输出目录路径
+        sr_img (str/gdal.Dataset): 输入影像路径或已打开的GDAL数据集对象
+        position_list (list): 需要裁剪的位置列表，每个位置为(y, x)元组
+        patch_size (int): 裁剪块大小（像素），默认30
+        out_tif_name (str): 输出文件名前缀，默认'img'
+        fill_value (int/float): 边缘填充值，默认0
+    
+    返回:
+        list: 生成的图像路径列表, 格式为["path1.tif", "path2.tif", ...]
+    
+    异常:
+        RuntimeError: 当无法打开输入文件时
+        TypeError: 当sr_img参数类型无效时
+    """
+    # 计算中心偏移
+    if patch_size % 2 == 0:
+        left_top = patch_size // 2 - 1
+        right_bottom = patch_size // 2
+    else:
+        left_top = right_bottom = patch_size // 2
+
+    # 读取原始影像
+    need_close = False
+    if isinstance(sr_img, str):
+        im_dataset = gdal.Open(sr_img)
+        if im_dataset is None:
+            raise RuntimeError(f"无法打开影像文件: {sr_img}")
+        need_close = True
+    elif isinstance(sr_img, gdal.Dataset):
+        im_dataset = sr_img
+    else:
+        raise TypeError("sr_img必须是文件路径字符串或GDAL数据集对象")
+    
+    im_geotrans = im_dataset.GetGeoTransform()
+    im_proj = im_dataset.GetProjection()
+    im_width = im_dataset.RasterXSize
+    im_height = im_dataset.RasterYSize
+    im_bands = im_dataset.RasterCount
+
+    band = im_dataset.GetRasterBand(1)
+    data_type = band.DataType # 获取数据类型
+    dtype_name, numpy_dtype = GDAL2NP_TYPE.get(data_type, ('unknown', None)) # 确定numpy数据类型
+    if dtype_name == 'unknown':
+        raise ValueError(f"不支持的GDAL数据类型: {data_type}")
+    count = len(position_list)
+
+    pbar = tqdm(total=count) # 进度条
+    idx = 0
+    out_dataset = []
+    for y, x in position_list:
+        # 计算裁剪窗口
+        x_start = x - left_top
+        y_start = y - left_top
+        x_end = x + right_bottom + 1
+        y_end = y + right_bottom + 1
+        
+        # 计算实际可读取范围
+        read_x = max(0, x_start)
+        read_y = max(0, y_start)
+        read_width = min(x_end, im_width) - read_x
+        read_height = min(y_end, im_height) - read_y
+        
+        # 如果有有效区域可读取
+        if read_width > 0 and read_height > 0: # 在影像范围内才进行裁剪
+            if im_bands > 1:# 创建填充数组
+                full_data = np.full((im_bands, patch_size, patch_size), fill_value, dtype=numpy_dtype)
+            else:
+                full_data = np.full((patch_size, patch_size), fill_value, dtype=numpy_dtype)
+            if read_width > 0 and read_height > 0:  
+                # 读取实际数据
+                if im_bands > 1:
+                    data = im_dataset.ReadAsArray(read_x, read_y, read_width, read_height)
+                    # 计算在填充数组中的位置
+                    offset_x = read_x - x_start
+                    offset_y = read_y - y_start
+                    # 将数据放入填充数组
+                    full_data[:, offset_y:offset_y+read_height, offset_x:offset_x+read_width] = data
+                else:
+                    data = im_dataset.GetRasterBand(1).ReadAsArray(read_x, read_y, read_width, read_height)
+                    if data.dtype == np.int16:
+                        data = data.astype(np.float32) * 1e-4 # 如何data是int类型, 进行放缩并转化为float32类型
+                    offset_x = read_x - x_start
+                    offset_y = read_y - y_start
+                    full_data[offset_y:offset_y+read_height, offset_x:offset_x+read_width] = data
+        
+            # 计算新的地理变换
+            new_geotrans = list(im_geotrans)
+            new_geotrans[0] = im_geotrans[0] + x_start * im_geotrans[1]
+            new_geotrans[3] = im_geotrans[3] + y_start * im_geotrans[5]
+            
+            # 保存结果
+            idx += 1
+            out_path = os.path.join(out_dir, f"{out_tif_name}_{idx}.tif")
+            write_data_to_tif(out_path, full_data, new_geotrans, im_proj)
+            if label is not None:
+                out_dataset.append(f"{out_path} {label}")
+        pbar.update(1)
+    pbar.close()
+    if need_close:
+        im_dataset = None
+    return out_dataset
+
+def clip_by_shp(out_dir, sr_img, point_shp, patch_size=30, out_tif_name='img', fill_value=0, label=None, sample_num=10000):
     """
     根据点Shapefile从影像中裁剪指定大小的图像块
     
@@ -514,10 +621,10 @@ def clip_by_shp(out_dir, sr_img, point_shp, block_size=30, out_tif_name='img', f
         out_dir (str): 输出目录路径
         sr_img (str/gdal.Dataset): 输入影像路径或已打开的GDAL数据集对象
         point_shp (str): 点要素Shapefile路径
-        block_size (int): 裁剪块大小（像素），默认30
+        patch_size (int): 裁剪块大小（像素），默认30
         out_tif_name (str): 输出文件名前缀，默认'img'
         fill_value (int/float): 边缘填充值，默认0
-        value (int): 为输出文件名添加的标签值, 默认None
+        label (int): 为输出文件名添加的标签值, 默认None
     
     返回:
         list: 生成的图像路径列表, 格式为["path1.tif label1", "path2.tif label2", ...]
@@ -527,11 +634,11 @@ def clip_by_shp(out_dir, sr_img, point_shp, block_size=30, out_tif_name='img', f
         TypeError: 当sr_img参数类型无效时
     """
     # 计算中心偏移
-    if block_size % 2 == 0:
-        left_top = block_size // 2 - 1
-        right_bottom = block_size // 2
+    if patch_size % 2 == 0:
+        left_top = patch_size // 2 - 1
+        right_bottom = patch_size // 2
     else:
-        left_top = right_bottom = block_size // 2
+        left_top = right_bottom = patch_size // 2
 
     # 读取原始影像
     need_close = False
@@ -563,18 +670,31 @@ def clip_by_shp(out_dir, sr_img, point_shp, block_size=30, out_tif_name='img', f
         raise RuntimeError(f"无法打开矢量文件: {point_shp}")
     
     layer = shp_dataset.GetLayer()
-    count = layer.GetFeatureCount()
+    geom_type = layer.GetGeomType()
+    geom_type_name = ogr.GeometryTypeToName(geom_type)
+    # 判断是点矢量还是面矢量
+    if geom_type_name == "Polygon": 
+        mask = Mianvector2mask(im_geotrans, im_proj, im_width, im_height, point_shp, fill_value=1)
+        positions = np.column_stack(np.where(mask == 1)).tolist()
+        if len(positions) > sample_num: # 如果是面矢量且采样量多大，控制采样量为sample_num
+            random.seed(42)  # For reproducibility
+            positions = random.choices(positions, sample_num)
+        count = len(positions)
+    else:
+        positions = []
+        for feature in layer:
+            geom = feature.GetGeometryRef()
+            geoX, geoY = geom.GetX(), geom.GetY()
+                    # 转换坐标到像素位置
+            x = int((geoX - im_geotrans[0]) / im_geotrans[1])
+            y = int((geoY - im_geotrans[3]) / im_geotrans[5])
+            positions.append([y, x]) # 注意这里是行列顺序
+            count = layer.GetFeatureCount()
+            
     pbar = tqdm(total=count) # 进度条
     idx = 0
     out_dataset = []
-    for feature in layer:
-        geom = feature.GetGeometryRef()
-        geoX, geoY = geom.GetX(), geom.GetY()
-        
-        # 转换坐标到像素位置
-        x = int((geoX - im_geotrans[0]) / im_geotrans[1])
-        y = int((geoY - im_geotrans[3]) / im_geotrans[5])
-        
+    for y, x in positions:
         # 计算裁剪窗口
         x_start = x - left_top
         y_start = y - left_top
@@ -590,9 +710,9 @@ def clip_by_shp(out_dir, sr_img, point_shp, block_size=30, out_tif_name='img', f
         # 如果有有效区域可读取
         if read_width > 0 and read_height > 0: # 在影像范围内才进行裁剪
             if im_bands > 1:# 创建填充数组
-                full_data = np.full((im_bands, block_size, block_size), fill_value, dtype=numpy_dtype)
+                full_data = np.full((im_bands, patch_size, patch_size), fill_value, dtype=numpy_dtype)
             else:
-                full_data = np.full((block_size, block_size), fill_value, dtype=numpy_dtype)
+                full_data = np.full((patch_size, patch_size), fill_value, dtype=numpy_dtype)
             if read_width > 0 and read_height > 0:  
                 # 读取实际数据
                 if im_bands > 1:
@@ -619,8 +739,8 @@ def clip_by_shp(out_dir, sr_img, point_shp, block_size=30, out_tif_name='img', f
             idx += 1
             out_path = os.path.join(out_dir, f"{out_tif_name}_{idx}.tif")
             write_data_to_tif(out_path, full_data, new_geotrans, im_proj)
-            if value is not None:
-                out_dataset.append(f"{out_path} {value}")
+            if label is not None:
+                out_dataset.append(f"{out_path} {label}")
         pbar.update(1)
         
         # print(f"生成: {out_path} (有效区域: {read_width}x{read_height})")
@@ -656,7 +776,7 @@ def clip_by_multishp(out_dir, sr_img, point_shp_dir, block_size=30, out_tif_name
             raise RuntimeError(f'Not shapefiles found in directory: {point_shp_dir}')
         all_out_datasets = []
         for idx, point_shp in enumerate(point_shp_files):
-            out_dataset = clip_by_shp(out_dir, sr_img, point_shp, block_size, out_tif_name=f'{out_tif_name}_label{idx}', fill_value=fill_value, value=idx)
+            out_dataset = clip_by_shp(out_dir, sr_img, point_shp, block_size, out_tif_name=f'{out_tif_name}_label{idx}', fill_value=fill_value, label=idx)
             all_out_datasets.extend(out_dataset)
         if not all_out_datasets:
             pass
@@ -666,7 +786,7 @@ def clip_by_multishp(out_dir, sr_img, point_shp_dir, block_size=30, out_tif_name
             print(f'dataset file saved to: {dataset_path}')
     elif os.path.isfile(point_shp_dir):
         print('single shape file dont need to write dataset file')
-        out_dataset = clip_by_shp(out_dir, sr_img, point_shp, block_size, out_tif_name=out_tif_name, fill_value=fill_value)
+        out_dataset = clip_by_shp(out_dir, sr_img, point_shp_dir, block_size, out_tif_name=out_tif_name, fill_value=fill_value)
     else:
         raise RuntimeError(f'Invalid point_shp_dir: {point_shp_dir}, it should be a directory or a shapefile path')
     

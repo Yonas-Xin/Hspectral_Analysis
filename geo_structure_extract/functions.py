@@ -8,6 +8,7 @@ import numpy as np
 from skimage.morphology import remove_small_objects
 from skimage.morphology import remove_small_holes
 from skeletonization import skeletonize_and_prune
+from post_batch_process import post_batch_process
 
 def swt2_edge(input_tif, out_path, level=5, wavelet='haar', stretch="Linear_2%", rgb=(1,2,3), use_modulus_maxima=True):
     """
@@ -218,3 +219,15 @@ def skeletonize_image(input_tif, out_path, min_branch_length = 1000000):
         return f"Skeletonization completed. Output saved to {out_path}", binary
     except Exception as e:
         return f"Error during skeletonization: {e}", None
+    
+def post_batch_process_image(input_tif, out_path, top=0, bottom=0, left=0, right=0, small_obj_area=100000, small_hole_area=100000):
+    try:
+        gt = Gdal_Tool(input_tif)
+        rgb = 1
+        img = gt.read_tif_to_image(rgb, to_int=False).astype(np.uint8)
+        img = post_batch_process(img, top, bottom, left, right, small_obj_area, small_hole_area)
+        img = img.astype(np.float32)
+        gt.save_tif(out_path, img)
+        return f"Post batch processing completed. Output saved to {out_path}", img
+    except Exception as e:
+        return f"Error during post batch processing: {e}", None

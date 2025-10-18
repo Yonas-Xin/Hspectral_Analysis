@@ -114,7 +114,7 @@ def swt2_multiscale_edge(img, wavelet='haar', level=3, use_modulus_maxima=False)
         edges = calculate_modulus_maxima(M, theta)  # 非极大值抑制
     else:
         # 直接合并最大尺度的高频信息（H+V+D）
-        edges = np.sqrt(cH_max**2 + cV_max**2)
+        edges = np.sqrt(cH_max**2 + cV_max**2 + cD_max**2)
 
     edges = crop_image(edges, info, factor=1)
     # edges_norm = (edges - edges.min()) / (edges.max() - edges.min()) # 拉伸显示边缘增强图像

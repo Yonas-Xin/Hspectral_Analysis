@@ -5,8 +5,10 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout
                              QLabel, QWidget, QMenu)
 from PyQt5.QtGui import QPixmap, QPixmap, QImage
 from PyQt5.QtWidgets import QMessageBox
-from dialog import SobelDialog, Wavelet2Dialog, CannyDialog, MaskImageDialog, RemoveSmallHoleDialog, RemoveSmallObjDialog, SkeletonizeDialog, ErodeDilateDialog
-from functions import swt2_edge, canny_edge, sobel_edge, post_mask_image, post_remove_small_obj, post_erode_image, post_dilate_image, post_remove_small_hole, skeletonize_image
+from dialog import SobelDialog, Wavelet2Dialog, CannyDialog, MaskImageDialog, RemoveSmallHoleDialog, \
+                   RemoveSmallObjDialog, SkeletonizeDialog, ErodeDilateDialog, BatchProcessDialog
+from functions import swt2_edge, canny_edge, sobel_edge, post_mask_image, post_remove_small_obj, \
+                      post_erode_image, post_dilate_image, post_remove_small_hole, skeletonize_image, post_batch_process_image
 
 FUNCTIONS_DICT = {
     post_mask_image: MaskImageDialog,
@@ -95,6 +97,10 @@ class GeoStructure_Win(QMainWindow):
         geostruct.setStyleSheet("QToolButton { font-size: 14px; padding: 6px 12px; }")
 
         data_menu = QMenu(geostruct)
+        
+        import_action = QAction('一键批量处理', self)
+        import_action.triggered.connect(self.show_batchprocess_dialog)
+        data_menu.addAction(import_action)
 
         import_action = QAction('二值边缘掩膜', self)
         import_action.triggered.connect(self.show_imagemask_dialog)
@@ -222,7 +228,20 @@ class GeoStructure_Win(QMainWindow):
             else:
                 QMessageBox.critical(self, "错误", "处理失败，请检查输入参数。")
                 self.status_label.setText("处理失败")
-    
+
+    def show_batchprocess_dialog(self):
+        dialog = BatchProcessDialog(self)  # 复用CannyDialog, 可根据
+        if dialog.exec_():  # 如果用户点击 OK
+            params = dialog.get_params()
+            result, edges = post_batch_process_image(**params)  # 解包参数并调用函数
+            if edges is not None:
+                QMessageBox.information(self, "成功", f"处理完成，结果保存在: {result}")
+                self.status_label.setText(f"处理完成: {result.split('/')[-1]}")
+                self.arr2image(edges)  # 显示边缘图
+            else:
+                QMessageBox.critical(self, "错误", "处理失败，请检查输入参数。")
+                self.status_label.setText("处理失败")
+
     def show_skeletonize_dialog(self):
         dialog = SkeletonizeDialog(self)  # 复用CannyDialog, 可根据
         if dialog.exec_():  # 如果用户点击 OK
@@ -237,7 +256,10 @@ class GeoStructure_Win(QMainWindow):
                 self.status_label.setText("处理失败")
 
     def arr2image(self, data):
-        data = ((data - np.min(data)) / (np.max(data) - np.min(data)) * 255).astype(np.uint8) # 默认将图像数据归一化到0-255
+        if data.dtype == np.bool:
+            data = data.astype(np.uint8) * 255
+        else:
+            data = ((data - np.min(data)) / (np.max(data) - np.min(data) + 1e-8) * 255).astype(np.uint8) # 默认将图像数据归一化到0-255
         h, w = data.shape
         qimage = QImage(data.data, w, h, w, QImage.Format_Grayscale8)
         pixmap = QPixmap.fromImage(qimage)

@@ -44,6 +44,31 @@ class BaseDialog(QDialog):
         out_layout.addWidget(browse_out_btn)
         layout.addLayout(out_layout)
         return out_layout
+    
+    def layout_choose_out_filedir(self, layout):
+        """创建选择输出文件夹的布局"""
+        out_layout = QHBoxLayout()
+        self.out_path = QLineEdit()
+        self.out_path.setPlaceholderText("输出文件夹路径...")
+        browse_out_btn = QPushButton("浏览")
+        browse_out_btn.clicked.connect(self.browse_out_filedir)
+        out_layout.addWidget(QLabel("输出文件夹:"))
+        out_layout.addWidget(self.out_path)
+        out_layout.addWidget(browse_out_btn)
+        layout.addLayout(out_layout)
+        return out_layout
+
+    def layout_choose_out_shpfile(self, layout):
+        """创建选择输出Shapefile的布局"""
+        out_layout = QHBoxLayout()
+        self.out_path = QLineEdit()
+        self.out_path.setPlaceholderText("输出Shapefile路径...")
+        browse_out_btn = QPushButton("浏览")
+        browse_out_btn.clicked.connect(self.browse_out_shpfile)
+        out_layout.addWidget(QLabel("输出Shapefile:"))
+        out_layout.addWidget(self.out_path)
+        out_layout.addWidget(browse_out_btn)
+        layout.addLayout(out_layout)
 
     def create_label_layout(self, layout, text):
         self.info_label = QLabel("算法信息：")
@@ -62,7 +87,16 @@ class BaseDialog(QDialog):
         file_path, _ = QFileDialog.getSaveFileName(self, "选择输出文件", "", "TIFF Files (*.tif)")
         if file_path:
             self.out_path.setText(file_path)
-    
+
+    def browse_out_shpfile(self):
+        file_path, _ = QFileDialog.getSaveFileName(self, "选择输出文件", "", "Shapefile Files (*.shp)")
+        if file_path:
+            self.out_path.setText(file_path)
+
+    def browse_out_filedir(self):
+        file_path = QFileDialog.getExistingDirectory(self, "选择输出文件夹", "")
+        if file_path:
+            self.out_path.setText(file_path)
 
 class Wavelet2Dialog(BaseDialog):
     def __init__(self, parent=None):
@@ -89,7 +123,7 @@ class Wavelet2Dialog(BaseDialog):
 
         # use_modulus_maxima
         self.use_modulus_check = QCheckBox("启用模极大值检测")
-        self.use_modulus_check.setChecked(True)  # 默认值
+        self.use_modulus_check.setChecked(False)  # 默认值
         layout.addWidget(self.use_modulus_check)
 
         # wavelet
@@ -375,7 +409,7 @@ class RemoveSmallObjDialog(BaseDialog):
         area_layout = QHBoxLayout()
         self.area_spin = QSpinBox()
         self.area_spin.setRange(0, 100000000)
-        self.area_spin.setValue(10000)
+        self.area_spin.setValue(100000)
         area_layout.addWidget(QLabel("小物体面积阈值:"))
         area_layout.addWidget(self.area_spin)
         layout.addLayout(area_layout)
@@ -413,7 +447,7 @@ class RemoveSmallHoleDialog(BaseDialog):
         area_layout = QHBoxLayout()
         self.area_spin = QSpinBox()
         self.area_spin.setRange(0, 100000000)
-        self.area_spin.setValue(10000)
+        self.area_spin.setValue(100000)
         area_layout.addWidget(QLabel("小孔洞面积阈值:"))
         area_layout.addWidget(self.area_spin)
         layout.addLayout(area_layout)
@@ -497,13 +531,13 @@ class SkeletonizeDialog(BaseDialog):
         self.layout_choose_file(layout)
 
         # 输出文件
-        self.layout_choose_out_file(layout)
+        self.layout_choose_out_shpfile(layout)
 
         # min_branch_length
         branch_layout = QHBoxLayout()
         self.branch_spin = QSpinBox()
         self.branch_spin.setRange(1, 100000000)
-        self.branch_spin.setValue(10000)
+        self.branch_spin.setValue(100000)
         branch_layout.addWidget(QLabel("最小分支长度:"))
         branch_layout.addWidget(self.branch_spin)
         layout.addLayout(branch_layout)
@@ -524,4 +558,72 @@ class SkeletonizeDialog(BaseDialog):
             "input_tif": self.input_tif.text(),
             "out_path": self.out_path.text(),
             "min_branch_length": self.branch_spin.value()
+        }
+
+class BatchProcessDialog(BaseDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("边缘掩膜参数设置")
+        self.initUI()
+
+    def initUI(self):
+        main_layout = QHBoxLayout(self)
+        layout = QVBoxLayout()
+
+        # 输入文件
+        self.layout_choose_file(layout)
+
+        # 输出文件
+        self.layout_choose_out_file(layout)
+
+        # 四个边缘参数
+        for name, default in zip(["Top", "Bottom", "Left", "Right"], [0,0,0,0]):
+            hlayout = QHBoxLayout()
+            spin = QSpinBox()
+            spin.setRange(0, 10000)
+            spin.setValue(default)
+            setattr(self, f"{name.lower()}_spin", spin)
+            hlayout.addWidget(QLabel(f"{name}边缘宽度:"))
+            hlayout.addWidget(spin)
+            layout.addLayout(hlayout)
+
+        # 小孔洞面积阈值
+        area_layout = QHBoxLayout()
+        self.hole_area_spin = QSpinBox()
+        self.hole_area_spin.setRange(0, 100000000)
+        self.hole_area_spin.setValue(100000)
+        area_layout.addWidget(QLabel("小孔洞面积阈值:"))
+        area_layout.addWidget(self.hole_area_spin)
+        layout.addLayout(area_layout)
+
+        # 小物体面积阈值
+        area_layout = QHBoxLayout()
+        self.area_spin = QSpinBox()
+        self.area_spin.setRange(0, 100000000)
+        self.area_spin.setValue(100000)
+        area_layout.addWidget(QLabel("小物体面积阈值:"))
+        area_layout.addWidget(self.area_spin)
+        layout.addLayout(area_layout)
+
+        # 确认/取消
+        self.create_button_layout(layout)
+        info_layout = QVBoxLayout()
+        text = "参数一: 输入影像路径(*tif、*dat)\n参数二: 输出影像路径\n参数三: 上边缘宽度\n参数四: 下边缘宽度\n参数五: 左边缘宽度\n参数六: 右边缘宽度" \
+               "\n参数七: 小孔洞面积阈值\n参数八: 小物体面积阈值"
+        self.create_label_layout(info_layout, text)
+        main_layout.addLayout(layout, 3)
+        main_layout.addLayout(info_layout, 2)
+
+        self.setLayout(main_layout)
+
+    def get_params(self):
+        return {
+            "input_tif": self.input_tif.text(),
+            "out_path": self.out_path.text(),
+            "top": self.top_spin.value(),
+            "bottom": self.bottom_spin.value(),
+            "left": self.left_spin.value(),
+            "right": self.right_spin.value(),
+            "small_hole_area": self.hole_area_spin.value(),
+            "small_obj_area": self.area_spin.value()
         }
