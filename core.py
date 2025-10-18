@@ -7,14 +7,11 @@ import numpy as np
 from scipy.ndimage import gaussian_filter1d
 from sklearn.preprocessing import StandardScaler
 from tqdm import tqdm
-import matplotlib.pyplot as plt
 from gdal_utils import *
 from utils import save_matrix_to_csv
 import spectral as spy
 from skimage.segmentation import slic
-from utils import block_generator
 from algorithms import *
-from skimage.feature import graycomatrix, graycoprops
 
 gdal.UseExceptions()
 class Hyperspectral_Image:

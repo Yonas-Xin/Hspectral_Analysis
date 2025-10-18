@@ -49,7 +49,12 @@ class GeoStructure_Win(QMainWindow):
         title_label2.setStyleSheet("font-size: 14px; font-weight: bold;")
         layout.addWidget(title_label2)
         button_layout = QHBoxLayout()
-        self.create_button_sampling_areas(button_layout)
+        # self.create_button_sampling_areas(button_layout)
+        self.button_ss = QPushButton("超像素采样")
+        self.button_ss.clicked.connect(self.show_ss_dialog)
+        button_layout.addWidget(self.button_ss)
+
+
         self.button_dd = QPushButton("特征降维")
         self.button_dd.clicked.connect(self.show_dd_prediction_dialog)
         button_layout.addWidget(self.button_dd)
@@ -94,9 +99,9 @@ class GeoStructure_Win(QMainWindow):
         wavelet_action.triggered.connect(self.show_ss_dialog)
         data_menu.addAction(wavelet_action) 
 
-        canny_action = QAction('分块SMACC提取', self)
-        canny_action.triggered.connect(self.show_smacc_dialog)
-        data_menu.addAction(canny_action)
+        # canny_action = QAction('分块SMACC提取', self)
+        # canny_action.triggered.connect(self.show_smacc_dialog)
+        # data_menu.addAction(canny_action)
 
         geostruct.setMenu(data_menu)
         layout.addWidget(geostruct)

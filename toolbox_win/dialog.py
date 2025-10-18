@@ -43,17 +43,17 @@ def run_algorithm(algorithm, params):
             "--ppi_centered", str(params["ppi_centered"])
         ]
 
-    elif algorithm == "smacc_sampling":
-        script_path = os.path.abspath("./toolbox_win/function2_2_smaccs.py")
-        cmd = [
-            sys.executable, script_path,
-            "--input_tif", params["input_tif"],
-            "--output_dir", params["output_dir"],
-            "--row", str(params["row"]),
-            "--col", str(params["col"]),
-            "--embedding_nums", str(params["embedding_nums"]),
-            "--samples", str(params["samples"])
-        ]
+    # elif algorithm == "smacc_sampling":
+    #     script_path = os.path.abspath("./toolbox_win/function2_2_smaccs.py")
+    #     cmd = [
+    #         sys.executable, script_path,
+    #         "--input_tif", params["input_tif"],
+    #         "--output_dir", params["output_dir"],
+    #         "--row", str(params["row"]),
+    #         "--col", str(params["col"]),
+    #         "--embedding_nums", str(params["embedding_nums"]),
+    #         "--samples", str(params["samples"])
+    #     ]
 
     elif algorithm == "dd_prediction":
         script_path = os.path.abspath("./toolbox_win/function3_dd.py")
